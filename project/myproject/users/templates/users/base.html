@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{% block title %}Users App{% endblock %}</title>
+    <style>
+        body { font-family: Arial; margin: 0; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], input[type="email"], input[type="password"] { 
+            width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; 
+        }
+        .btn { 
+            background: #007bff; color: white; padding: 10px 20px; 
+            border: none; border-radius: 5px; cursor: pointer; 
+        }
+        .btn:hover { background: #0056b3; }
+        .messages { margin: 20px 0; }
+        .error { color: red; }
+        .success { color: green; }
+        .menu { margin-bottom: 30px; }
+        .menu a { margin-right: 15px; text-decoration: none; color: #333; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="menu">
+            {% if user.is_authenticated %}
+                Привет, {{ user.username }}! | 
+                <a href="{% url 'profile' %}">Профиль</a> | 
+                <a href="{% url 'edit_profile' %}">Редактировать</a> | 
+                <a href="{% url 'logout' %}">Выйти</a>
+            {% else %}
+                <a href="{% url 'login' %}">Войти</a> | 
+                <a href="{% url 'register' %}">Регистрация</a>
+            {% endif %}
+        </div>
+        
+        <div class="messages">
+            {% for message in messages %}
+                <div class="{{ message.tags }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        
+        {% block content %}
+        {% endblock %}
+    </div>
+</body>
+</html>

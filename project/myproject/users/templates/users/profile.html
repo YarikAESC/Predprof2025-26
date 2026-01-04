@@ -1,0 +1,26 @@
+{% extends 'users/base.html' %}
+
+{% block title %}Профиль{% endblock %}
+
+{% block content %}
+<h2>Ваш профиль</h2>
+
+<p><strong>Имя пользователя:</strong> {{ user.username }}</p>
+<p><strong>Email:</strong> {{ user.email }}</p>
+<p><strong>Имя:</strong> {{ user.first_name|default:"Не указано" }}</p>
+<p><strong>Фамилия:</strong> {{ user.last_name|default:"Не указано" }}</p>
+<p><strong>Телефон:</strong> {{ user.phone|default:"Не указан" }}</p>
+<p><strong>Дата рождения:</strong> {{ user.birth_date|default:"Не указана" }}</p>
+<p><strong>Дата регистрации:</strong> {{ user.date_joined|date:"d.m.Y H:i" }}</p>
+
+{% if user.avatar %}
+    <p><strong>Аватар:</strong></p>
+    <img src="{{ user.avatar.url }}" alt="Аватар" style="width: 100px; height: 100px; border-radius: 50%;">
+{% endif %}
+
+<h3>Действия:</h3>
+<ul>
+    <li><a href="{% url 'edit_profile' %}">Изменить профиль</a></li>  <!-- Вот это добавить! -->
+    <li><a href="{% url 'logout' %}">Выйти</a></li>
+</ul>
+{% endblock %}

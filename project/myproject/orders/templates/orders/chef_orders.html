@@ -1,0 +1,114 @@
+{% extends 'base.html' %}
+
+{% block title %}Заказы на кухне{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card shadow-sm">
+        <div class="card-header bg-warning text-dark">
+            <h4 class="mb-0"><i class="fas fa-utensils"></i> Заказы на кухне</h4>
+        </div>
+        <div class="card-body">
+            
+            {% if messages %}
+            <div class="messages mb-3">
+                {% for message in messages %}
+                <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            
+            {% if orders %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-warning">
+                        <tr>
+                            <th>ID заказа</th>
+                            <th>Ученик</th>
+                            <th>Блюда</th>
+                            <th>Время заказа</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for order in orders %}
+                        <tr>
+                            <td>
+                                <strong>#{{ order.id }}</strong>
+                            </td>
+                            <td>
+                                {{ order.customer.username }}
+                                {% if order.customer.first_name %}
+                                <br><small>{{ order.customer.first_name }}</small>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="mb-2">
+                                    {% for item in order.items.all %}
+                                    <span class="badge bg-light text-dark mb-1">
+                                        {{ item.dish.name }} × {{ item.quantity }}
+                                    </span><br>
+                                    {% endfor %}
+                                </div>
+                                <small class="text-muted">Всего: {{ order.total_price }} руб.</small>
+                            </td>
+                            <td>
+                                {{ order.created_at|date:"H:i" }}
+                                <br><small class="text-muted">{{ order.created_at|date:"d.m.Y" }}</small>
+                            </td>
+                            <td>
+                                <form method="post" action="{% url 'update_order_status' order.id %}" class="d-inline">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="status" value="ready">
+                                    <button type="submit" class="btn btn-success btn-sm" 
+                                            onclick="return confirm('Отметить заказ #{{ order.id }} как готовый?')">
+                                        <i class="fas fa-check"></i> Готово
+                                    </button>
+                                </form>
+                                <a href="{% url 'order_detail' order.id %}" class="btn btn-info btn-sm mt-1">
+                                    <i class="fas fa-eye"></i> Подробнее
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle"></i> На данный момент нет заказов для приготовления.
+            </div>
+            {% endif %}
+            
+            <div class="mt-4">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h6><i class="fas fa-info-circle text-primary"></i> Инструкция:</h6>
+                                <ol class="small">
+                                    <li>Здесь отображаются заказы со статусом "Готовится"</li>
+                                    <li>Нажмите "Готово" когда закончите приготовление</li>
+                                    <li>Статус заказа изменится на "Готово"</li>
+                                    <li>Ученик увидит, что его заказ готов</li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h6><i class="fas fa-chart-line text-success"></i> Статистика:</h6>
+                                <ul class="small">
+                                    <li>Заказов в работе: {{ orders|length }}</li>
+                                    <li>Время приема заказов: 8:00 - 16:00</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
