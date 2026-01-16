@@ -49,6 +49,7 @@ class Order(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='Дата обновления')
     notes = models.TextField(blank=True, verbose_name='Примечания')
+    is_visible_to_customer = models.BooleanField(default=True, verbose_name='Виден ученику')
     
     class Meta:
         verbose_name = 'Заказ'
@@ -74,3 +75,4 @@ class OrderItem(models.Model):
     
     def get_total(self):
         return self.price_at_time * self.quantity
+
