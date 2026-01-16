@@ -12,6 +12,7 @@ urlpatterns = [
     path('order/<int:order_id>/', views.order_detail, name='order_detail'),
     path('order/cancel/<int:order_id>/', views.cancel_order, name='cancel_order'),
     path('order/<int:order_id>/update_status/', views.update_order_status, name='update_order_status'),
+    path('order/hide/<int:order_id>/', views.hide_order, name='hide_order'),
     
     # Админские URL
     path('manage/dashboard/', views.admin_dashboard, name='admin_dashboard'),
@@ -22,3 +23,4 @@ urlpatterns = [
     # Для повара
     path('chef/orders/', views.chef_orders, name='chef_orders'),
 ]
+
