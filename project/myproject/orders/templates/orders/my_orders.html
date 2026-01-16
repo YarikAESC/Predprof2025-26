@@ -35,8 +35,8 @@
                             {% elif order.status == 'confirmed' %}bg-info
                             {% elif order.status == 'preparing' %}bg-primary
                             {% elif order.status == 'ready' %}bg-success
-                            {% elif order.status == 'ready' %}bg-success
-                            {% else %}bg-danger{% endif %}">
+                            {% elif order.status == 'delivered' %}bg-secondary
+                            {% elif order.status == 'cancelled' %}bg-danger{% endif %}">
                             {{ order.get_status_display }}
                         </span>
                     </td>
@@ -46,10 +46,10 @@
                             <i class="fas fa-eye"></i> Подробнее
                         </a>
                         {% if order.status == 'ready' %}
-                            <a href="{% url 'hide_order' order.id %}" 
-                                class="btn btn-sm btn-success"
-                                onclick="return confirm('Вы забрали заказ? Он будет скрыт из списка.')">
-                                    <i class="fas fa-check"></i> Забрать заказ
+                            <a href="{% url 'hide_order' order.id %}"
+                               class="btn btn-sm btn-success mt-1"
+                               onclick="return confirm('Вы действительно забрали заказ? Он исчезнет из этого списка.')">
+                                <i class="fas fa-check-circle"></i> Забрать заказ
                             </a>
                         {% endif %}
                     </td>
@@ -65,6 +65,4 @@
     </div>
     {% endif %}
 </div>
-
 {% endblock %}
-
