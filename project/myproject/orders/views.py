@@ -8,12 +8,14 @@ from users.models import CustomUser
 from .utils import user_can_order
 from django.utils import timezone
 
+# Класс для отображения меню
 class MenuView(ListView):
     model = Dish
     template_name = 'orders/menu.html'
     context_object_name = 'dishes'
     
     def get_queryset(self):
+        # Получение доступных блюд с фильтрацией по категории
         queryset = Dish.objects.filter(is_available=True).select_related('category')
         category_id = self.request.GET.get('category')
         if category_id:
@@ -21,12 +23,14 @@ class MenuView(ListView):
         return queryset
     
     def get_context_data(self, **kwargs):
+        # Добавление категорий и количества товаров в корзине в контекст
         context = super().get_context_data(**kwargs)
         context['categories'] = Category.objects.all()
         cart = self.request.session.get('cart', {})
         context['cart_count'] = len(cart)
         return context
 
+# Добавление блюда в корзину
 @login_required
 def add_to_cart(request, dish_id):
     dish = get_object_or_404(Dish, id=dish_id, is_available=True)
@@ -34,20 +38,22 @@ def add_to_cart(request, dish_id):
     dish_id_str = str(dish_id)
     
     if dish_id_str in cart:
-        cart[dish_id_str] += 1
+        cart[dish_id_str] += 1  # Увеличиваем количество
     else:
-        cart[dish_id_str] = 1
+        cart[dish_id_str] = 1   # Добавляем новое блюдо
     
     request.session['cart'] = cart
     messages.success(request, f'"{dish.name}" добавлено в корзину')
     return redirect('menu')
 
+# Просмотр корзины
 @login_required
 def view_cart(request):
     cart = request.session.get('cart', {})
     cart_items = []
     total = 0
     
+    # Формирование списка товаров в корзине
     for dish_id_str, quantity in cart.items():
         try:
             dish_id = int(dish_id_str)
@@ -60,13 +66,14 @@ def view_cart(request):
             })
             total += item_total
         except (Dish.DoesNotExist, ValueError):
-            continue
+            continue  # Пропускаем несуществующие блюда
     
     return render(request, 'orders/cart.html', {
         'cart_items': cart_items,
         'total': total
     })
 
+# Обновление количества товара в корзине
 @login_required
 def update_cart(request, dish_id):
     cart = request.session.get('cart', {})
@@ -77,15 +84,16 @@ def update_cart(request, dish_id):
         if quantity and quantity.isdigit():
             quantity = int(quantity)
             if quantity > 0:
-                cart[dish_id_str] = quantity
+                cart[dish_id_str] = quantity  # Обновляем количество
             else:
-                cart.pop(dish_id_str, None)
+                cart.pop(dish_id_str, None)   # Удаляем если количество 0
         else:
-            cart.pop(dish_id_str, None)
+            cart.pop(dish_id_str, None)       # Удаляем при неверных данных
     
     request.session['cart'] = cart
     return redirect('view_cart')
 
+# Удаление товара из корзины
 @login_required
 def remove_from_cart(request, dish_id):
     cart = request.session.get('cart', {})
@@ -98,9 +106,10 @@ def remove_from_cart(request, dish_id):
     
     return redirect('view_cart')
 
+# Создание заказа из корзины
 @login_required
 def create_order(request):
-    """Создание заказа из корзины - сразу со статусом 'preparing'"""
+    # Только ученики могут оформлять заказы
     if not hasattr(request.user, 'role') or request.user.role != 'student':
         messages.error(request, 'Только ученики могут оформлять заказы')
         return redirect('menu')
@@ -112,6 +121,7 @@ def create_order(request):
         return redirect('menu')
     
     try:
+        # Создаем заказ со статусом 'preparing' (готовится)
         order = Order.objects.create(
             customer=request.user,
             status='preparing',
@@ -119,6 +129,7 @@ def create_order(request):
         )
         
         total = 0
+        # Добавляем все товары из корзины в заказ
         for dish_id_str, quantity in cart.items():
             dish_id = int(dish_id_str)
             dish = Dish.objects.get(id=dish_id, is_available=True)
@@ -127,13 +138,14 @@ def create_order(request):
                 order=order,
                 dish=dish,
                 quantity=quantity,
-                price_at_time=dish.price
+                price_at_time=dish.price  # Сохраняем цену на момент заказа
             )
             total += dish.price * quantity
         
         order.total_price = total
         order.save()
         
+        # Очищаем корзину после создания заказа
         request.session['cart'] = {}
         
         messages.success(request, f'Заказ #{order.id} успешно оформлен! Начато приготовление.')
@@ -146,13 +158,14 @@ def create_order(request):
         messages.error(request, f'Ошибка при оформлении заказа: {str(e)}')
         return redirect('view_cart')
 
-
+# Просмотр своих заказов
 @login_required
 def my_orders(request):
     try:
+        # Показываем только видимые заказы пользователя
         orders = Order.objects.filter(
             customer=request.user,
-            is_visible_to_customer=True  # ← показываем только видимые
+            is_visible_to_customer=True
         ).order_by('-created_at')
 
         return render(request, 'orders/my_orders.html', {'orders': orders})
@@ -160,20 +173,24 @@ def my_orders(request):
         messages.error(request, f'Ошибка загрузки заказов: {str(e)}')
         return redirect('menu')
 
+# Детальная информация о заказе
 @login_required
 def order_detail(request, order_id):
     order = get_object_or_404(Order, id=order_id)
     
+    # Проверка прав доступа: админ или владелец заказа
     if not hasattr(request.user, 'role') or (request.user.role != 'admin' and order.customer != request.user):
         messages.error(request, 'У вас нет прав для просмотра этого заказа')
         return redirect('my_orders')
     
     return render(request, 'orders/order_detail.html', {'order': order})
 
+# Отмена заказа
 @login_required
 def cancel_order(request, order_id):
     order = get_object_or_404(Order, id=order_id, customer=request.user)
     
+    # Можно отменять только заказы в статусах pending или preparing
     if order.status in ['pending', 'preparing']:
         order.status = 'cancelled'
         order.save()
@@ -183,12 +200,15 @@ def cancel_order(request, order_id):
     
     return redirect('my_orders')
 
+# Админ-панель
 @login_required
 def admin_dashboard(request):
+    # Только для администраторов
     if not request.user.is_admin():
         messages.error(request, 'Доступно только для администраторов')
         return redirect('menu')
     
+    # Сбор статистики
     total_customers = CustomUser.objects.filter(role='customer').count()
     total_chefs = CustomUser.objects.filter(role='chef').count()
     total_dishes = Dish.objects.count()
@@ -204,8 +224,10 @@ def admin_dashboard(request):
     }
     return render(request, 'orders/admin_dashboard.html', context)
 
+# Управление блюдами
 @login_required
 def manage_dishes(request):
+    # Только для администраторов
     if not request.user.is_admin():
         messages.error(request, 'Доступно только для администраторов')
         return redirect('menu')
@@ -218,8 +240,10 @@ def manage_dishes(request):
         'categories': categories,
     })
 
+# Добавление нового блюда
 @login_required
 def add_dish(request):
+    # Только для администраторов
     if not request.user.is_admin():
         raise PermissionDenied("Только для администраторов")
     
@@ -246,16 +270,20 @@ def add_dish(request):
     categories = Category.objects.all()
     return render(request, 'orders/add_dish.html', {'categories': categories})
 
+# Управление пользователями
 @login_required
 def manage_users(request):
+    # Только для администраторов
     if not request.user.is_admin():
         raise PermissionDenied("Только для администраторов")
     
     users = CustomUser.objects.all()
     return render(request, 'orders/manage_users.html', {'users': users})
 
+# Изменение роли пользователя
 @login_required
 def change_user_role(request, user_id):
+    # Только для администраторов
     if not request.user.is_admin():
         raise PermissionDenied("Только для администраторов")
     
@@ -270,6 +298,7 @@ def change_user_role(request, user_id):
     
     return redirect('manage_users')
 
+# Обновление статуса заказа
 @login_required
 def update_order_status(request, order_id):
     order = get_object_or_404(Order, id=order_id)
@@ -277,6 +306,7 @@ def update_order_status(request, order_id):
     if request.method == 'POST':
         new_status = request.POST.get('status')
         
+        # Логика для повара
         if request.user.is_chef():
             if order.status == 'preparing' and new_status == 'ready':
                 order.status = new_status
@@ -286,6 +316,7 @@ def update_order_status(request, order_id):
                 messages.error(request, 'Невозможно изменить статус')
             return redirect('chef_orders')
         
+        # Логика для администратора
         elif request.user.is_admin():
             if new_status in dict(Order.STATUS_CHOICES):
                 order.status = new_status
@@ -295,30 +326,30 @@ def update_order_status(request, order_id):
     
     return redirect('menu')
 
+# Страница заказов для повара
 @login_required
 def chef_orders(request):
-    """Страница заказов для повара"""
+    # Только для поваров
     if not request.user.is_chef():
         messages.error(request, 'Доступно только для поваров')
         return redirect('menu')
     
+    # Получаем заказы со статусом 'preparing'
     orders = Order.objects.filter(status='preparing').select_related('customer').order_by('created_at')
-    
-    # Для отладки
-    print(f"Найдено заказов для повара: {orders.count()}")
-    for order in orders:
-        print(f"Заказ #{order.id}, статус: {order.status}, пользователь: {order.customer.username}")
     
     return render(request, 'orders/chef_orders.html', {'orders': orders})
 
+# Управление заказами (админ)
 @login_required  
 def manage_orders(request):
+    # Только для администраторов
     if not request.user.is_admin():
         messages.error(request, 'Доступно только для администраторов')
         return redirect('menu')
     
     orders = Order.objects.all().select_related('customer').order_by('-created_at')
     
+    # Обновление статуса заказа
     if request.method == 'POST':
         order_id = request.POST.get('order_id')
         new_status = request.POST.get('status')
@@ -338,18 +369,21 @@ def manage_orders(request):
     }
     return render(request, 'orders/manage_orders.html', context)
 
-
+# Скрытие заказа (отметка как полученного)
 @login_required
 def hide_order(request, order_id):
     order = get_object_or_404(Order, id=order_id, customer=request.user)
 
+    # Можно скрыть только готовые заказы
     if order.status != 'ready':
         messages.error(request, 'Заказ еще не готов к выдаче')
         return redirect('my_orders')
 
+    # Меняем статус и скрываем от пользователя
     order.status = 'delivered'
     order.is_visible_to_customer = False
     order.save()
 
     messages.success(request, f'Вы забрали заказ #{order.id}')
     return redirect('my_orders')
+
