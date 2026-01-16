@@ -6,6 +6,7 @@ from .forms import RegistrationForm, LoginForm, ProfileEditForm
 from django.http import HttpResponse
 from .models import CustomUser
 
+# Регистрация нового пользователя
 def register_view(request):
     if request.method == 'POST':
         form = RegistrationForm(request.POST, request.FILES)
@@ -20,6 +21,7 @@ def register_view(request):
         form = RegistrationForm()
     return render(request, 'users/register.html', {'form': form})
 
+# Вход пользователя
 def login_view(request):
     if request.method == 'POST':
         form = LoginForm(request.POST)
@@ -38,16 +40,19 @@ def login_view(request):
     
     return render(request, 'users/login.html', {'form': form})
 
+# Выход пользователя
 @login_required
 def logout_view(request):
     logout(request)
     messages.success(request, 'Вы успешно вышли из системы')
     return redirect('login')
 
+# Профиль пользователя
 @login_required
 def profile_view(request):
     return render(request, 'users/profile.html', {'user': request.user})
 
+# Редактирование профиля
 @login_required
 def edit_profile(request):
     if request.method == 'POST':
@@ -67,23 +72,24 @@ def edit_profile(request):
     
     return render(request, 'users/edit_profile.html', {'form': form})
 
+# Список всех пользователей
 @login_required
 def user_list(request):
-    """Список пользователей"""
     users = CustomUser.objects.all()
     return render(request, 'users/user_list.html', {'users': users})
 
+# Просмотр профиля другого пользователя
 @login_required
 def user_detail(request, user_id=None):
-    """Детальная информация о пользователе"""
     if user_id:
         user = get_object_or_404(CustomUser, id=user_id)
     else:
         user = request.user
     
     return render(request, 'users/user_detail.html', {'user': user})
+
+# Главная страница приложения
 def index(request):
-    """Главная страница приложения users"""
     html = """
     <h1>Приложение Users</h1>
     <p>Приложение для работы с пользователями</p>
