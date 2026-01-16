@@ -6,6 +6,7 @@ from django.core.exceptions import PermissionDenied
 from .models import Dish, Order, OrderItem, Category
 from users.models import CustomUser
 from .utils import user_can_order
+from django.utils import timezone
 
 class MenuView(ListView):
     model = Dish
@@ -145,15 +146,15 @@ def create_order(request):
         messages.error(request, f'Ошибка при оформлении заказа: {str(e)}')
         return redirect('view_cart')
 
+
 @login_required
 def my_orders(request):
     try:
-
         orders = Order.objects.filter(
             customer=request.user,
             is_visible_to_customer=True  # ← показываем только видимые
         ).order_by('-created_at')
-        
+
         return render(request, 'orders/my_orders.html', {'orders': orders})
     except Exception as e:
         messages.error(request, f'Ошибка загрузки заказов: {str(e)}')
@@ -336,13 +337,19 @@ def manage_orders(request):
         'status_choices': Order.STATUS_CHOICES if hasattr(Order, 'STATUS_CHOICES') else [],
     }
     return render(request, 'orders/manage_orders.html', context)
+
+
 @login_required
 def hide_order(request, order_id):
-    """Скрыть заказ из списка ученика"""
     order = get_object_or_404(Order, id=order_id, customer=request.user)
+
+    if order.status != 'ready':
+        messages.error(request, 'Заказ еще не готов к выдаче')
+        return redirect('my_orders')
+
+    order.status = 'delivered'
     order.is_visible_to_customer = False
     order.save()
+
     messages.success(request, f'Вы забрали заказ #{order.id}')
     return redirect('my_orders')
-
-
