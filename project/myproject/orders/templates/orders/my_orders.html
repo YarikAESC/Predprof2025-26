@@ -35,7 +35,7 @@
                             {% elif order.status == 'confirmed' %}bg-info
                             {% elif order.status == 'preparing' %}bg-primary
                             {% elif order.status == 'ready' %}bg-success
-                            {% elif order.status == 'ready' %}bg-success  # готово становится финальным статусом
+                            {% elif order.status == 'ready' %}bg-success
                             {% else %}bg-danger{% endif %}">
                             {{ order.get_status_display }}
                         </span>
@@ -67,3 +67,4 @@
 </div>
 
 {% endblock %}
+
