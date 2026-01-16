@@ -4,6 +4,7 @@
 <div class="container">
     <h1 class="mb-4">Мои заказы</h1>
     
+    <!-- Сообщения пользователю -->
     {% if messages %}
     <div class="messages mb-3">
         {% for message in messages %}
@@ -12,12 +13,13 @@
     </div>
     {% endif %}
     
+    <!-- Если есть заказы -->
     {% if orders %}
     <div class="table-responsive">
         <table class="table table-hover">
             <thead>
                 <tr>
-                    <th>ID</th>
+                    <th>Номер</th>
                     <th>Дата</th>
                     <th>Статус</th>
                     <th>Сумма</th>
@@ -25,11 +27,13 @@
                 </tr>
             </thead>
             <tbody>
+                <!-- Список заказов -->
                 {% for order in orders %}
                 <tr>
                     <td>#{{ order.id }}</td>
                     <td>{{ order.created_at|date:"d.m.Y H:i" }}</td>
                     <td>
+                        <!-- Цветной бейдж статуса -->
                         <span class="badge 
                             {% if order.status == 'pending' %}bg-warning
                             {% elif order.status == 'confirmed' %}bg-info
@@ -42,13 +46,15 @@
                     </td>
                     <td>{{ order.total_price }} руб.</td>
                     <td>
+                        <!-- Кнопка просмотра заказа -->
                         <a href="{% url 'order_detail' order.id %}" class="btn btn-sm btn-info">
                             <i class="fas fa-eye"></i> Подробнее
                         </a>
+                        <!-- Кнопка "Забрать заказ" (только для готовых заказов) -->
                         {% if order.status == 'ready' %}
                             <a href="{% url 'hide_order' order.id %}"
                                class="btn btn-sm btn-success mt-1"
-                               onclick="return confirm('Вы действительно забрали заказ? Он исчезнет из этого списка.')">
+                               onclick="return confirm('Вы забрали заказ? Он пропадет из этого списка.')">
                                 <i class="fas fa-check-circle"></i> Забрать заказ
                             </a>
                         {% endif %}
@@ -59,8 +65,9 @@
         </table>
     </div>
     {% else %}
+    <!-- Сообщение если заказов нет -->
     <div class="alert alert-info">
-        <p>У вас пока нет заказов.</p>
+        <p>У вас еще нет заказов.</p>
         <a href="{% url 'menu' %}" class="btn btn-primary">Сделать первый заказ</a>
     </div>
     {% endif %}
