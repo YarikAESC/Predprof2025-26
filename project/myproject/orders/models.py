@@ -37,6 +37,7 @@ class Order(models.Model):
         ('confirmed', 'Подтвержден'),
         ('preparing', 'Готовится'),
         ('ready', 'Готово'),
+        ('delivered', 'забран'),
         ('cancelled', 'Отменено'),
     ]
     
@@ -50,6 +51,7 @@ class Order(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name='Дата обновления')
     notes = models.TextField(blank=True, verbose_name='Примечания')
     is_visible_to_customer = models.BooleanField(default=True, verbose_name='Виден ученику')
+    #delivered_at = models.DateTimeField(null=True, blank=True, verbose_name='Дата получения')
     
     class Meta:
         verbose_name = 'Заказ'
