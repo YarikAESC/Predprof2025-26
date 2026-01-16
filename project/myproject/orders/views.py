@@ -342,6 +342,7 @@ def hide_order(request, order_id):
     order = get_object_or_404(Order, id=order_id, customer=request.user)
     order.is_visible_to_customer = False
     order.save()
-    messages.success(request, f'Заказ #{order.id} скрыт из вашего профиля')
+    messages.success(request, f'Вы забрали заказ #{order.id}')
     return redirect('my_orders')
+
 
