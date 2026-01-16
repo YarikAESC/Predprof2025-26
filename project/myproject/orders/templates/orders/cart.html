@@ -4,6 +4,7 @@
 <div class="container">
     <h1 class="mb-4">Корзина</h1>
     
+    <!-- Сообщения пользователю -->
     {% if messages %}
     <div class="messages mb-3">
         {% for message in messages %}
@@ -12,6 +13,7 @@
     </div>
     {% endif %}
     
+    <!-- Проверка есть ли товары в корзине -->
     {% if cart_items %}
     <div class="table-responsive">
         <table class="table table-hover">
@@ -25,6 +27,7 @@
                 </tr>
             </thead>
             <tbody>
+                <!-- Список товаров в корзине -->
                 {% for item in cart_items %}
                 <tr>
                     <td>
@@ -33,6 +36,7 @@
                     </td>
                     <td>{{ item.dish.price }} руб.</td>
                     <td>
+                        <!-- Форма для изменения количества -->
                         <form method="post" action="{% url 'update_cart' item.dish.id %}" class="form-inline">
                             {% csrf_token %}
                             <input type="number" name="quantity" value="{{ item.quantity }}" 
@@ -44,6 +48,7 @@
                     </td>
                     <td>{{ item.total }} руб.</td>
                     <td>
+                        <!-- Кнопка удаления товара -->
                         <a href="{% url 'remove_from_cart' item.dish.id %}" class="btn btn-sm btn-danger">
                             <i class="fas fa-trash"></i>
                         </a>
@@ -52,6 +57,7 @@
                 {% endfor %}
             </tbody>
             <tfoot>
+                <!-- Итоговая сумма -->
                 <tr>
                     <th colspan="3" class="text-right">Итого:</th>
                     <th colspan="2">{{ total }} руб.</th>
@@ -60,10 +66,29 @@
         </table>
     </div>
     
+    <!-- Кнопки действий -->
     <div class="text-right mt-4">
+        <!-- Кнопка продолжить покупки -->
         <a href="{% url 'menu' %}" class="btn btn-secondary mr-2">
             <i class="fas fa-chevron-left"></i> Продолжить покупки
         </a>
+        <!-- Форма оформления заказа -->
+        <form method="post" action="{% url 'create_order' %}" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-success btn-lg">
+                <i class="fas fa-check"></i> Оформить заказ
+            </button>
+        </form>
+    </div>
+    {% else %}
+    <!-- Сообщение если корзина пустая -->
+    <div class="alert alert-warning">
+        <p>Ваша корзина пуста.</p>
+        <a href="{% url 'menu' %}" class="btn btn-primary">Перейти к меню</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}</a>
         <form method="post" action="{% url 'create_order' %}" class="d-inline">
             {% csrf_token %}
             <button type="submit" class="btn btn-success btn-lg">
@@ -78,4 +103,5 @@
     </div>
     {% endif %}
 </div>
+
 {% endblock %}
