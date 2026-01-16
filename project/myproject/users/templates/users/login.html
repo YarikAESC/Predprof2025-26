@@ -4,21 +4,27 @@
 
 {% block content %}
 <h2>Вход в систему</h2>
+
+<!-- Форма входа -->
 <form method="post">
-    {% csrf_token %}
+    {% csrf_token %} <!-- Защита от CSRF -->
     
+    <!-- Поле имени пользователя -->
     <div class="form-group">
         <label for="id_username">Имя пользователя:</label>
         {{ form.username }}
     </div>
     
+    <!-- Поле пароля -->
     <div class="form-group">
         <label for="id_password">Пароль:</label>
         {{ form.password }}
     </div>
     
+    <!-- Кнопка отправки -->
     <button type="submit" class="btn">Войти</button>
 </form>
 
+<!-- Ссылка на регистрацию -->
 <p>Нет аккаунта? <a href="{% url 'register' %}">Зарегистрироваться</a></p>
 {% endblock %}
