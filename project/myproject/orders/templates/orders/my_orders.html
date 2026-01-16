@@ -45,6 +45,13 @@
                         <a href="{% url 'order_detail' order.id %}" class="btn btn-sm btn-info">
                             <i class="fas fa-eye"></i> Подробнее
                         </a>
+                        {% if order.status == 'ready' %}
+                            <a href="{% url 'hide_order' order.id %}" 
+                                class="btn btn-sm btn-success"
+                                onclick="return confirm('Вы забрали заказ? Он будет скрыт из списка.')">
+                                    <i class="fas fa-check"></i> Забрать заказ
+                            </a>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
@@ -58,4 +65,5 @@
     </div>
     {% endif %}
 </div>
+
 {% endblock %}
