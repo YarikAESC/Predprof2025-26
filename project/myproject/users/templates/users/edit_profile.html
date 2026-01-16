@@ -57,28 +57,35 @@
     </style>
 </head>
 <body>
+    <!-- Контейнер формы редактирования -->
     <div class="edit-container">
         <h2>Редактирование профиля</h2>
 
+        <!-- Блок для системных сообщений -->
         {% if messages %}
         <div class="messages">
             {% for message in messages %}
+            <!-- Отображение сообщений об успехе или ошибке -->
             <div class="{{ message.tags }}">{{ message }}</div>
             {% endfor %}
         </div>
         {% endif %}
 
+        <!-- Основная форма редактирования -->
         <form method="post" enctype="multipart/form-data">
-            {% csrf_token %}
+            {% csrf_token %} <!-- Защита от CSRF -->
             
+            <!-- Поле имени пользователя -->
             <div class="form-group">
                 <label for="id_username">Имя пользователя:</label>
                 {{ form.username }}
                 {% if form.username.errors %}
+                    <!-- Отображение ошибок валидации -->
                     <div style="color: red;">{{ form.username.errors }}</div>
                 {% endif %}
             </div>
 
+            <!-- Поле email -->
             <div class="form-group">
                 <label for="id_email">Email:</label>
                 {{ form.email }}
@@ -87,29 +94,35 @@
                 {% endif %}
             </div>
 
+            <!-- Поле имени -->
             <div class="form-group">
                 <label for="id_first_name">Имя:</label>
                 {{ form.first_name }}
             </div>
 
+            <!-- Поле фамилии -->
             <div class="form-group">
                 <label for="id_last_name">Фамилия:</label>
                 {{ form.last_name }}
             </div>
 
+            <!-- Поле телефона -->
             <div class="form-group">
                 <label for="id_phone">Телефон:</label>
                 {{ form.phone }}
             </div>
 
+            <!-- Поле даты рождения -->
             <div class="form-group">
                 <label for="id_birth_date">Дата рождения:</label>
                 {{ form.birth_date }}
             </div>
 
+            <!-- Поле аватара -->
             <div class="form-group">
                 <label for="id_avatar">Аватар:</label>
                 {{ form.avatar }}
+                <!-- Показ текущего аватара если есть -->
                 {% if user.avatar %}
                 <div class="avatar-preview">
                     <p>Текущий аватар:</p>
@@ -118,6 +131,7 @@
                 {% endif %}
             </div>
 
+            <!-- Кнопки действий -->
             <div class="form-actions">
                 <button type="submit" class="btn">Сохранить изменения</button>
                 <a href="{% url 'profile' %}" class="btn" style="background: #6c757d;">Отмена</a>
