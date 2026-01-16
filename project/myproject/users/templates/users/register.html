@@ -4,17 +4,22 @@
 
 {% block content %}
 <h2>Регистрация</h2>
+
+<!-- Форма регистрации -->
 <form method="post">
-    {% csrf_token %}
+    {% csrf_token %} <!-- Защита от CSRF -->
     
+    <!-- Поле имени пользователя -->
     <div class="form-group">
         <label for="id_username">Имя пользователя:</label>
         {{ form.username }}
         {% if form.username.errors %}
+            <!-- Отображение ошибок валидации -->
             <div class="error">{{ form.username.errors }}</div>
         {% endif %}
     </div>
     
+    <!-- Поле email -->
     <div class="form-group">
         <label for="id_email">Email:</label>
         {{ form.email }}
@@ -23,6 +28,7 @@
         {% endif %}
     </div>
     
+    <!-- Поле пароля -->
     <div class="form-group">
         <label for="id_password1">Пароль:</label>
         {{ form.password1 }}
@@ -31,6 +37,7 @@
         {% endif %}
     </div>
     
+    <!-- Поле подтверждения пароля -->
     <div class="form-group">
         <label for="id_password2">Подтверждение пароля:</label>
         {{ form.password2 }}
@@ -39,8 +46,10 @@
         {% endif %}
     </div>
     
+    <!-- Кнопка отправки формы -->
     <button type="submit" class="btn">Зарегистрироваться</button>
 </form>
 
+<!-- Ссылка для уже зарегистрированных пользователей -->
 <p>Уже есть аккаунт? <a href="{% url 'login' %}">Войти</a></p>
 {% endblock %}
