@@ -4,6 +4,7 @@
 <div class="container">
     <h1 class="mb-4">Заказ #{{ order.id }}</h1>
     
+    <!-- Сообщения пользователю -->
     {% if messages %}
     <div class="messages mb-3">
         {% for message in messages %}
@@ -13,12 +14,15 @@
     {% endif %}
     
     <div class="row">
+        <!-- Левая колонка с информацией о заказе -->
         <div class="col-md-8">
+            <!-- Карточка с основной информацией -->
             <div class="card mb-4">
                 <div class="card-header">
                     <h5 class="mb-0">Информация о заказе</h5>
                 </div>
                 <div class="card-body">
+                    <!-- Статус заказа -->
                     <p><strong>Статус:</strong> 
                         <span class="badge 
                             {% if order.status == 'pending' %}bg-warning
@@ -29,15 +33,19 @@
                             {{ order.get_status_display }}
                         </span>
                     </p>
+                    <!-- Дата создания -->
                     <p><strong>Дата создания:</strong> {{ order.created_at|date:"d.m.Y H:i" }}</p>
+                    <!-- Примечания -->
                     <p><strong>Примечания:</strong> {{ order.notes|default:"Нет" }}</p>
+                    <!-- Сумма заказа -->
                     <p><strong>Общая сумма:</strong> <span class="h5 text-success">{{ order.total_price }} руб.</span></p>
                 </div>
             </div>
             
+            <!-- Карточка с составом заказа -->
             <div class="card">
                 <div class="card-header">
-                    <h5 class="mb-0">Состав заказа</h5>
+                    <h5 class="mb-0">Что в заказе</h5>
                 </div>
                 <div class="card-body">
                     <table class="table">
@@ -50,6 +58,7 @@
                             </tr>
                         </thead>
                         <tbody>
+                            <!-- Список блюд в заказе -->
                             {% for item in order.items.all %}
                             <tr>
                                 <td>{{ item.dish.name }}</td>
@@ -60,8 +69,9 @@
                             {% endfor %}
                         </tbody>
                         <tfoot>
+                            <!-- Итоговая сумма -->
                             <tr>
-                                <th colspan="3" class="text-right">Итого:</th>
+                                <th colspan="3" class="text-right">Всего:</th>
                                 <th>{{ order.total_price }} руб.</th>
                             </tr>
                         </tfoot>
@@ -70,20 +80,24 @@
             </div>
         </div>
         
+        <!-- Правая колонка с действиями и подсказками -->
         <div class="col-md-4">
+            <!-- Карточка с действиями -->
             <div class="card">
                 <div class="card-body">
-                    <h5 class="card-title">Действия</h5>
+                    <h5 class="card-title">Что можно сделать</h5>
                     <div class="d-grid gap-2">
+                        <!-- Кнопка назад -->
                         <a href="{% url 'my_orders' %}" class="btn btn-secondary">
                             <i class="fas fa-arrow-left"></i> Назад к заказам
                         </a>
                         
+                        <!-- Кнопка отмены заказа (только для ожидающих заказов) -->
                         {% if order.status == 'pending' and order.customer == user %}
                         <form method="post" action="{% url 'cancel_order' order.id %}" class="d-inline">
                             {% csrf_token %}
                             <button type="submit" class="btn btn-danger"
-                                onclick="return confirm('Вы уверены, что хотите отменить заказ?')">
+                                onclick="return confirm('Отменить заказ?')">
                                 <i class="fas fa-times"></i> Отменить заказ
                             </button>
                         </form>
@@ -92,9 +106,10 @@
                 </div>
             </div>
             
+            <!-- Карточка с пояснениями статусов -->
             <div class="card mt-3">
                 <div class="card-body">
-                    <h5 class="card-title">Что дальше?</h5>
+                    <h5 class="card-title">Что означают статусы?</h5>
                     <ul class="list-unstyled">
                         <li class="mb-2">
                             <i class="fas fa-clock text-warning"></i>
@@ -102,13 +117,12 @@
                         </li>
                         <li class="mb-2">
                             <i class="fas fa-utensils text-info"></i>
-                            <strong>Готовится</strong> - повар начал готовку
+                            <strong>Готовится</strong> - повар готовит
                         </li>
                         <li class="mb-2">
                             <i class="fas fa-check text-success"></i>
                             <strong>Готово</strong> - можно забирать
                         </li>
-                     
                     </ul>
                 </div>
             </div>
