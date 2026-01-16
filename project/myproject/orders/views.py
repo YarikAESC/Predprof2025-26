@@ -336,4 +336,12 @@ def manage_orders(request):
         'status_choices': Order.STATUS_CHOICES if hasattr(Order, 'STATUS_CHOICES') else [],
     }
     return render(request, 'orders/manage_orders.html', context)
+@login_required
+def hide_order(request, order_id):
+    """Скрыть заказ из списка ученика"""
+    order = get_object_or_404(Order, id=order_id, customer=request.user)
+    order.is_visible_to_customer = False
+    order.save()
+    messages.success(request, f'Заказ #{order.id} скрыт из вашего профиля')
+    return redirect('my_orders')
 
