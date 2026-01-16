@@ -148,7 +148,12 @@ def create_order(request):
 @login_required
 def my_orders(request):
     try:
-        orders = Order.objects.filter(customer=request.user).order_by('-created_at')
+
+        orders = Order.objects.filter(
+            customer=request.user,
+            is_visible_to_customer=True  # ← показываем только видимые
+        ).order_by('-created_at')
+        
         return render(request, 'orders/my_orders.html', {'orders': orders})
     except Exception as e:
         messages.error(request, f'Ошибка загрузки заказов: {str(e)}')
@@ -331,3 +336,4 @@ def manage_orders(request):
         'status_choices': Order.STATUS_CHOICES if hasattr(Order, 'STATUS_CHOICES') else [],
     }
     return render(request, 'orders/manage_orders.html', context)
+
