@@ -107,29 +107,37 @@
     </style>
 </head>
 <body>
+    <!-- Основной контейнер -->
     <div class="detail-container">
+        <!-- Навигационные кнопки -->
         <div class="navigation">
             <a href="{% url 'user_list' %}" class="btn">← Назад к списку</a>
             <a href="{% url 'profile' %}" class="btn">Мой профиль</a>
             <a href="{% url 'logout' %}" class="btn" style="background: #dc3545;">Выйти</a>
         </div>
 
+        <!-- Шапка с аватаром и основной информацией -->
         <div class="user-header">
+            <!-- Аватар пользователя -->
             {% if user.avatar %}
                 <img src="{{ user.avatar.url }}" alt="Аватар" class="avatar-large">
             {% else %}
+                <!-- Заглушка если аватара нет -->
                 <img src="https://via.placeholder.com/180" alt="Аватар" class="avatar-large">
             {% endif %}
             
+            <!-- Информация о пользователе -->
             <div class="user-info">
                 <h1>
                     {{ user.username }}
+                    <!-- Бейджи статусов пользователя -->
                     {% if user.is_superuser %}
                         <span class="badge badge-superuser">SUPERUSER</span>
                     {% endif %}
                     {% if user.is_staff %}
                         <span class="badge badge-staff">STAFF</span>
                     {% endif %}
+                    <!-- Статус активности -->
                     {% if user.is_active %}
                         <span style="color: green;">● Активен</span>
                     {% else %}
@@ -137,10 +145,14 @@
                     {% endif %}
                 </h1>
                 
+                <!-- Имя и фамилия -->
                 <p><strong>{{ user.first_name }} {{ user.last_name }}</strong></p>
+                <!-- Email -->
                 <p>{{ user.email }}</p>
+                <!-- Дата регистрации -->
                 <p>Зарегистрирован: {{ user.date_joined|date:"d.m.Y H:i" }}</p>
                 
+                <!-- Статистика пользователя -->
                 <div class="user-stats">
                     <div class="stat">
                         <span class="number">{{ user.date_joined|timesince }}</span>
@@ -154,7 +166,9 @@
             </div>
         </div>
 
+        <!-- Сетка с карточками информации -->
         <div class="info-grid">
+            <!-- Карточка контактной информации -->
             <div class="info-card">
                 <h3>📱 Контактная информация</h3>
                 <div class="info-item">
@@ -171,6 +185,7 @@
                 </div>
             </div>
 
+            <!-- Карточка личной информации -->
             <div class="info-card">
                 <h3>🎂 Личная информация</h3>
                 <div class="info-item">
@@ -192,6 +207,7 @@
                 </div>
             </div>
 
+            <!-- Карточка информации об аккаунте -->
             <div class="info-card">
                 <h3>🔐 Аккаунт</h3>
                 <div class="info-item">
@@ -214,6 +230,7 @@
                 </div>
             </div>
 
+            <!-- Карточка активности -->
             <div class="info-card">
                 <h3>📅 Активность</h3>
                 <div class="info-item">
