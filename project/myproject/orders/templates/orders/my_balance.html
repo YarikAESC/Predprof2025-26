@@ -1,0 +1,150 @@
+{% extends 'base.html' %}
+
+{% block title %}Мой баланс{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1 class="mb-4"><i class="fas fa-wallet"></i> Мой баланс</h1>
+    
+    <!-- КАРТОЧКА БАЛАНСА -->
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card text-white bg-success mb-4">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Текущий баланс</h5>
+                    <div class="display-4">{{ user.balance }} ₽</div>
+                    <a href="{% url 'add_balance' %}" class="btn btn-light mt-3">
+                        <i class="fas fa-plus-circle"></i> Пополнить баланс
+                    </a>
+                </div>
+            </div>
+            
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="fas fa-bolt"></i> Быстрые действия</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <a href="{% url 'add_balance' %}" class="btn btn-success">
+                            <i class="fas fa-plus"></i> Пополнить
+                        </a>
+                        <a href="{% url 'my_orders' %}" class="btn btn-outline-primary">
+                            <i class="fas fa-history"></i> Мои заказы
+                        </a>
+                        <a href="{% url 'menu' %}" class="btn btn-outline-success">
+                            <i class="fas fa-utensils"></i> Сделать заказ
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- ИСТОРИЯ ТРАНЗАКЦИЙ -->
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-history"></i> История операций</h5>
+                </div>
+                <div class="card-body">
+                    {% if transactions %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Дата</th>
+                                    <th>Тип операции</th>
+                                    <th>Сумма</th>
+                                    <th>Баланс после</th>
+                                    <th>Описание</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for trans in transactions %}
+                                <tr>
+                                    <td>{{ trans.created_at|date:"d.m.Y H:i" }}</td>
+                                    <td>
+                                        <span class="badge 
+                                            {% if trans.amount > 0 %}bg-success
+                                            {% else %}bg-danger{% endif %}">
+                                            {{ trans.get_transaction_type_display }}
+                                        </span>
+                                    </td>
+                                    <td class="{% if trans.amount > 0 %}text-success{% else %}text-danger{% endif %}">
+                                        {% if trans.amount > 0 %}+{% endif %}{{ trans.amount }} ₽
+                                    </td>
+                                    <td>{{ trans.balance_after }} ₽</td>
+                                    <td>
+                                        <small>{{ trans.description }}</small>
+                                        {% if trans.order %}
+                                        <br><a href="{% url 'order_detail' trans.order.id %}">Заказ #{{ trans.order.id }}</a>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted">Пока нет операций</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- ПОСЛЕДНИЕ ЗАКАЗЫ -->
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-receipt"></i> Последние заказы</h5>
+        </div>
+        <div class="card-body">
+            {% if recent_orders %}
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Заказ</th>
+                            <th>Дата</th>
+                            <th>Статус</th>
+                            <th>Сумма</th>
+                            <th>Оплата</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for order in recent_orders %}
+                        <tr>
+                            <td><a href="{% url 'order_detail' order.id %}">#{{ order.id }}</a></td>
+                            <td>{{ order.created_at|date:"d.m.Y" }}</td>
+                            <td>
+                                <span class="badge 
+                                    {% if order.status == 'pending' %}bg-warning
+                                    {% elif order.status == 'preparing' %}bg-info
+                                    {% elif order.status == 'ready' %}bg-success
+                                    {% else %}bg-danger{% endif %}">
+                                    {{ order.get_status_display }}
+                                </span>
+                            </td>
+                            <td>{{ order.total_price }} ₽</td>
+                            <td>
+                                {% if order.status == 'pending' %}
+                                <a href="{% url 'pay_with_balance' order.id %}" 
+                                   class="btn btn-sm btn-success"
+                                   onclick="return confirm('Оплатить {{ order.total_price }} ₽ с баланса?')">
+                                    Оплатить
+                                </a>
+                                {% else %}
+                                <span class="text-muted">Оплачено</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted">Нет заказов</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
