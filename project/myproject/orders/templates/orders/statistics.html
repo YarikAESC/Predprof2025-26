@@ -182,9 +182,11 @@
                                     </tbody>
                                 </table>
                             </div>
-                            {% else %}
-                            <p class="text-muted">Сегодня еще никто не заходил</p>
-                            {% endif %}
+{% else %}
+                                <div class="progress-bar bg-secondary" style="width: 100%">
+                                    Нет данных
+                                </div>
+{% endif %}
                         </div>
                         
                         <div class="col-md-6">
@@ -251,8 +253,8 @@
     
     <!-- КНОПКА УПРАВЛЕНИЯ -->
     <div class="mt-4">
-        <a href="{% url 'admin_dashboard' %}" class="btn btn-secondary">
-            <i class="fas fa-arrow-left"></i> Назад в панель управления
+        <a href="{% url 'home' %}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Назад на главную
         </a>
     </div>
 </div>
