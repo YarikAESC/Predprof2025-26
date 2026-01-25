@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Профиль пользователя</title>
+    <style>
+        .detail-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .user-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #eee;
+        }
+        .avatar-large {
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin-right: 40px;
+            border: 4px solid #007bff;
+        }
+        .user-info h1 {
+            margin: 0 0 10px 0;
+        }
+        .user-stats {
+            display: flex;
+            gap: 20px;
+            margin-top: 10px;
+        }
+        .stat {
+            background: #f8f9fa;
+            padding: 10px 15px;
+            border-radius: 5px;
+            text-align: center;
+        }
+        .stat .number {
+            font-size: 24px;
+            font-weight: bold;
+            display: block;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-top: 30px;
+        }
+        .info-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #007bff;
+        }
+        .info-card h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .info-item {
+            margin-bottom: 10px;
+            padding: 8px 0;
+            border-bottom: 1px dashed #ddd;
+        }
+        .label {
+            font-weight: bold;
+            color: #555;
+        }
+        .value {
+            color: #333;
+        }
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            margin-left: 5px;
+        }
+        .badge-admin {
+            background: #007bff;
+            color: white;
+        }
+        .badge-staff {
+            background: #28a745;
+            color: white;
+        }
+        .badge-superuser {
+            background: #ffc107;
+            color: #000;
+        }
+        .navigation {
+            margin-bottom: 30px;
+        }
+        .btn {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-right: 10px;
+            display: inline-block;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <!-- Основной контейнер -->
+    <div class="detail-container">
+        <!-- Навигационные кнопки -->
+        <div class="navigation">
+            <a href="{% url 'user_list' %}" class="btn">← Назад к списку</a>
+            <a href="{% url 'profile' %}" class="btn">Мой профиль</a>
+            <a href="{% url 'logout' %}" class="btn" style="background: #dc3545;">Выйти</a>
+        </div>
+
+        <!-- Шапка с аватаром и основной информацией -->
+        <div class="user-header">
+            <!-- Аватар пользователя -->
+            {% if user.avatar %}
+                <img src="{{ user.avatar.url }}" alt="Аватар" class="avatar-large">
+            {% else %}
+                <!-- Заглушка если аватара нет -->
+                <img src="https://via.placeholder.com/180" alt="Аватар" class="avatar-large">
+            {% endif %}
+            
+            <!-- Информация о пользователе -->
+            <div class="user-info">
+                <h1>
+                    {{ user.username }}
+                    <!-- Бейджи статусов пользователя -->
+                    {% if user.is_superuser %}
+                        <span class="badge badge-superuser">SUPERUSER</span>
+                    {% endif %}
+                    {% if user.is_staff %}
+                        <span class="badge badge-staff">STAFF</span>
+                    {% endif %}
+                    <!-- Статус активности -->
+                    {% if user.is_active %}
+                        <span style="color: green;">● Активен</span>
+                    {% else %}
+                        <span style="color: red;">● Неактивен</span>
+                    {% endif %}
+                </h1>
+                
+                <!-- Имя и фамилия -->
+                <p><strong>{{ user.first_name }} {{ user.last_name }}</strong></p>
+                <!-- Email -->
+                <p>{{ user.email }}</p>
+                <!-- Дата регистрации -->
+                <p>Зарегистрирован: {{ user.date_joined|date:"d.m.Y H:i" }}</p>
+                
+                <!-- Статистика пользователя -->
+                <div class="user-stats">
+                    <div class="stat">
+                        <span class="number">{{ user.date_joined|timesince }}</span>
+                        <span>на сайте</span>
+                    </div>
+                    <div class="stat">
+                        <span class="number">{{ user.last_login|date:"d.m.Y" }}</span>
+                        <span>последний вход</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Сетка с карточками информации -->
+        <div class="info-grid">
+            <!-- Карточка контактной информации -->
+            <div class="info-card">
+                <h3>📱 Контактная информация</h3>
+                <div class="info-item">
+                    <span class="label">Телефон:</span>
+                    <span class="value">{{ user.phone|default:"Не указан" }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Email:</span>
+                    <span class="value">{{ user.email }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Роль:</span>
+                    <span class="value">
+                        {% if user.role == 'student' %}Ученик{% endif %}
+                        {% if user.role == 'admin' %}Администратор{% endif %}
+                        {% if user.role == 'chef' %}Повар{% endif %}
+                     </span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Имя пользователя:</span>
+                    <span class="value">{{ user.username }}</span>
+                </div>
+            </div>
+
+            <!-- Карточка личной информации -->
+            <div class="info-card">
+                <h3>🎂 Личная информация</h3>
+                <div class="info-item">
+                    <span class="label">Дата рождения:</span>
+                    <span class="value">
+                        {% if user.birth_date %}
+                            {{ user.birth_date|date:"d.m.Y" }} 
+                            ({{ user.birth_date|timesince }})
+                        {% else %}
+                            Не указана
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Полное имя:</span>
+                    <span class="value">
+                        {{ user.first_name|default:"—" }} {{ user.last_name|default:"—" }}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Карточка информации об аккаунте -->
+            <div class="info-card">
+                <h3>🔐 Аккаунт</h3>
+                <div class="info-item">
+                    <span class="label">Статус:</span>
+                    <span class="value">
+                        {% if user.is_active %}Активен{% else %}Заблокирован{% endif %}
+                    </span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Персонал:</span>
+                    <span class="value">
+                        {% if user.is_staff %}Да{% else %}Нет{% endif %}
+                    </span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Суперпользователь:</span>
+                    <span class="value">
+                        {% if user.is_superuser %}Да{% else %}Нет{% endif %}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Карточка активности -->
+            <div class="info-card">
+                <h3>📅 Активность</h3>
+                <div class="info-item">
+                    <span class="label">Дата регистрации:</span>
+                    <span class="value">{{ user.date_joined|date:"d.m.Y H:i" }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Последний вход:</span>
+                    <span class="value">
+                        {% if user.last_login %}
+                            {{ user.last_login|date:"d.m.Y H:i" }}
+                        {% else %}
+                            Никогда
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

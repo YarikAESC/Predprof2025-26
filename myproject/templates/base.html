@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <!-- Настройки страницы -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- Заголовок в браузере -->
+    <title>{% block title %}Столовая{% endblock %}</title>
+    
+    <!-- Стили Bootstrap -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Иконки -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <!-- Дополнительные стили -->
+    <style>
+        body {
+            padding-top: 20px;
+            background-color: #f8f9fa;
+        }
+        .navbar-brand {
+            font-weight: bold;
+        }
+        .footer {
+            margin-top: 50px;
+            padding: 20px 0;
+            background-color: #f8f9fa;
+            border-top: 1px solid #dee2e6;
+        }
+        .mr-3 {
+            margin-right: 1rem !important;
+        }
+        .admin-menu-left {
+            margin-left: 0 !important;
+            padding-left: 0 !important;
+        }
+    </style>
+</head>
+<body>
+    <!-- Панель навигации -->
+    <nav class="navbar navbar-expand-lg navbar-light bg-light mb-4">
+        <div class="container">
+            <!-- Логотип -->
+            <a class="navbar-brand" href="{% url 'home' %}">Управление столовой</a>
+            
+            <!-- Кнопка для мобильных устройств -->
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            
+            <!-- Навигационные ссылки -->
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <!-- Основные разделы -->
+                <ul class="navbar-nav me-auto">
+                    <!-- Главная -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'home' %}">
+                            <i class="fas fa-home text-secondary"></i> Главная
+                        </a>
+                    </li>
+                    
+                    <!-- Профиль -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'profile' %}">
+                            <i class="fas fa-user text-secondary"></i> Профиль
+                        </a>
+                    </li>
+                    
+                    <!-- Для учеников -->
+                    {% if user.is_authenticated and user.is_student %}
+                    <!-- Меню блюд -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'menu' %}">
+                            <i class="fas fa-book-open text-secondary"></i> Меню
+                        </a>
+                    </li>
+                    
+                    <!-- История заказов -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'my_orders' %}">
+                            <i class="fas fa-history text-secondary"></i> Мои заказы
+                        </a>
+                    </li>
+                    
+                    <!-- Комбо-наборы -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'my_combo' %}">
+                            <i class="fas fa-layer-group text-secondary"></i> Комбо
+                        </a>
+                    </li>
+                    
+                    <!-- Корзина -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'view_cart' %}">
+                            <i class="fas fa-shopping-cart text-secondary"></i> Корзина
+                        </a>
+                    </li>
+                    
+                    <!-- Баланс -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'my_balance' %}">
+                            <i class="fas fa-wallet"></i> Мой баланс
+                        </a>
+                    </li>
+                    {% endif %}
+                    
+                    <!-- Для поваров -->
+                    {% if user.is_chef %}
+                    <!-- Заказы -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'chef_orders' %}">
+                            <i class="fas fa-utensils"></i> Заказы на кухне
+                        </a>
+                    </li>
+                    {% endif %}
+                    
+                    <!-- Для администраторов -->
+                    {% if user.is_admin %}
+                    <!-- Управление блюдами -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'manage_dishes' %}">
+                            <i class="fas fa-utensils text-secondary"></i> Блюда
+                        </a>
+                    </li>
+                    
+                    <!-- Управление пользователями -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'manage_users' %}">
+                            <i class="fas fa-users-cog"></i> Пользователи
+                        </a>
+                    </li>
+                    
+                    <!-- Статистика -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'statistics' %}">
+                            <i class="fas fa-chart-bar"></i> Статистика
+                        </a>
+                    </li>
+                    
+                    <!-- Админ-панель Django -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="/admin/" target="_blank">
+                            <i class="fas fa-cogs"></i> Админка Django
+                        </a>
+                    </li>
+                    {% endif %}
+                </ul>
+                
+                <!-- Информация о пользователе -->
+                <div class="navbar-nav">
+                    {% if user.is_authenticated %}
+                    <!-- Имя пользователя и роль -->
+                    <span class="navbar-text mr-3">
+                        Привет, {{ user.username }}!
+                        <span class="badge bg-info">
+                            {% if user.is_admin %}Администратор
+                            {% elif user.is_chef %}Повар
+                            {% else %}Ученик
+                            {% endif %}
+                        </span>
+                    </span>
+                    
+                    <!-- Выход -->
+                    <a class="nav-link" href="{% url 'logout' %}">
+                        <i class="fas fa-sign-out-alt"></i> Выйти
+                    </a>
+                    {% else %}
+                    <!-- Авторизация -->
+                    <a class="nav-link" href="{% url 'login' %}">
+                        <i class="fas fa-sign-in-alt"></i> Войти
+                    </a>
+                    <!-- Регистрация -->
+                    <a class="nav-link" href="{% url 'register' %}">
+                        <i class="fas fa-user-plus"></i> Регистрация
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Основное содержимое -->
+    <div class="container">
+        <!-- Системные сообщения -->
+        {% if messages %}
+        <div class="mt-3">
+            {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <!-- Кнопка закрытия -->
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        
+        <!-- Контент страницы -->
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Подвал -->
+    <footer class="footer">
+        <div class="container text-center">
+            <p class="text-muted">© Кейс управление столовой, предпрофессиональная олимпиада.</p>
+        </div>
+    </footer>
+
+    <!-- JavaScript Bootstrap -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Дополнительные скрипты -->
+    {% block scripts %}{% endblock %}
+</body>
+</html>
