@@ -1,0 +1,268 @@
+{% extends 'base.html' %}
+
+{% block title %}Главная - Школьная Столовая{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <!-- Заголовок главной страницы -->
+    <div class="text-center mb-5">
+        <h1 class="display-4">Добро пожаловать в систему Управление столовой</h1>
+        <p class="lead">Умная система заказа питания для образовательных учреждений</p>
+    </div>
+
+    <!-- Блок для авторизованных пользователей -->
+    {% if user.is_authenticated %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="alert alert-success">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <!-- Приветствие с именем пользователя -->
+                        <h5 class="mb-1"><i class="fas fa-check-circle me-2"></i>Вы вошли в систему как <strong>{{ user.username }}</strong></h5>
+                        <p class="mb-0">
+                            <!-- Бейдж с ролью пользователя -->
+                            {% if user.is_student %}
+                                <span class="badge bg-success">Ученик</span>
+                            {% elif user.is_chef %}
+                                <span class="badge bg-warning">Повар</span>
+                            {% elif user.is_admin %}
+                                <span class="badge bg-danger">Администратор</span>
+                            {% endif %}
+                            
+                            <!-- Отображение баланса для учеников -->
+                            {% if user.is_student and user.balance %}
+                                <span class="ms-3"><i class="fas fa-wallet"></i> Баланс: <strong>{{ user.balance|default:"0" }} ₽</strong></span>
+                            {% endif %}
+                        </p>
+                    </div>
+                    <!-- Кнопка выхода из системы -->
+                    <a href="{% url 'logout' %}" class="btn btn-outline-danger">
+                        <i class="fas fa-sign-out-alt"></i> Выйти
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <!-- Блок для неавторизованных пользователей -->
+    <div class="row mb-5">
+        <div class="col-12">
+            <div class="card border-success shadow">
+                <div class="card-body text-center p-5">
+                    <h2 class="card-title mb-4">Начните использовать систему прямо сейчас!</h2>
+                    
+                    <div class="mt-4">
+                        <!-- Кнопка входа в систему -->
+                        <a href="{% url 'login' %}" class="btn btn-primary btn-lg me-3">
+                            <i class="fas fa-sign-in-alt"></i> Войти в систему
+                        </a>
+                        <!-- Кнопка регистрации -->
+                        <a href="{% url 'register' %}" class="btn btn-success btn-lg">
+                            <i class="fas fa-user-plus"></i> Зарегистрироваться
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Инструкция по работе (показывается ТОЛЬКО неавторизованным пользователям) -->
+    {% if not user.is_authenticated %}
+    <div class="row mb-5">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h4 class="mb-0"><i class="fas fa-info-circle"></i> Как работает система?</h4>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <!-- Шаг 1: Регистрация -->
+                        <div class="col-md-3">
+                            <div class="step-number mb-3">
+                                <span class="badge bg-primary rounded-circle p-3 display-6">1</span>
+                            </div>
+                            <h5>Регистрация</h5>
+                            <p class="text-muted">Создайте учетную запись</p>
+                        </div>
+                        <!-- Шаг 2: Выбор блюд -->
+                        <div class="col-md-3">
+                            <div class="step-number mb-3">
+                                <span class="badge bg-primary rounded-circle p-3 display-6">2</span>
+                            </div>
+                            <h5>Выбор</h5>
+                            <p class="text-muted">Выберите блюда из меню</p>
+                        </div>
+                        <!-- Шаг 3: Оформление заказа -->
+                        <div class="col-md-3">
+                            <div class="step-number mb-3">
+                                <span class="badge bg-primary rounded-circle p-3 display-6">3</span>
+                            </div>
+                            <h5>Заказ</h5>
+                            <p class="text-muted">Оформите заказ через корзину</p>
+                        </div>
+                        <!-- Шаг 4: Получение заказа -->
+                        <div class="col-md-3">
+                            <div class="step-number mb-3">
+                                <span class="badge bg-primary rounded-circle p-3 display-6">4</span>
+                            </div>
+                            <h5>Получение</h5>
+                            <p class="text-muted">Заберите готовый заказ</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- Таблица доступных функций (показывается ТОЛЬКО авторизованным пользователям) -->
+    {% if user.is_authenticated %}
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h4 class="mb-0"><i class="fas fa-key"></i> Ваши возможности в системе</h4>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Доступная функция</th>
+                                    <th>Ссылка</th>
+                                    <th>Описание</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Функция профиля (доступна всем) -->
+                                <tr>
+                                    <td><i class="fas fa-user text-secondary"></i> Профиль</td>
+                                    <td><a href="{% url 'profile' %}" class="btn btn-sm btn-outline-secondary">Перейти</a></td>
+                                    <td>Личная информация и настройки</td>
+                                </tr>
+                                
+                                <!-- Функции для учеников -->
+                                {% if user.is_student %}
+                                <!-- Меню блюд -->
+                                <tr>
+                                    <td><i class="fas fa-book-open text-success"></i> Меню</td>
+                                    <td><a href="{% url 'menu' %}" class="btn btn-sm btn-outline-success">Перейти</a></td>
+                                    <td>Просмотр и выбор блюд для заказа</td>
+                                </tr>
+                                <!-- Корзина покупок -->
+                                <tr>
+                                    <td><i class="fas fa-shopping-cart text-primary"></i> Корзина</td>
+                                    <td><a href="{% url 'view_cart' %}" class="btn btn-sm btn-outline-primary">Перейти</a></td>
+                                    <td>Ваши выбранные блюда перед оформлением</td>
+                                </tr>
+                                <!-- История заказов -->
+                                <tr>
+                                    <td><i class="fas fa-history text-info"></i> Мои заказы</td>
+                                    <td><a href="{% url 'my_orders' %}" class="btn btn-sm btn-outline-info">Перейти</a></td>
+                                    <td>История и статусы ваших заказов. Возможность оставить отзыв</td>
+                                </tr>
+                                <!-- Баланс счета -->
+                                <tr>
+                                    <td><i class="fas fa-wallet text-warning"></i> Мой баланс</td>
+                                    <td>
+                                        <a href="{% url 'my_balance' %}" class="btn btn-sm btn-outline-warning">Перейти</a>
+                                        <!-- Отображение текущего баланса -->
+                                        <span class="badge bg-success ms-2">{{ user.balance|default:"0" }} ₽</span>
+                                    </td>
+                                    <td>Пополнение и отслеживание расходов</td>
+                                </tr>
+                                 <!-- Комбо-наборы -->
+                                <tr>
+                                    <td><i class="fas fa-layer-group text-Danger"></i> Комбо-наборы</td>
+                                    <td><a href="{% url 'my_combo' %}" class="btn btn-sm btn-outline-danger">Перейти</a></td>
+                                    <td>Страница просмотра своих комбо-наборов</td>
+                                </tr>
+                                {% endif %}
+                                
+                                <!-- Функции для поваров -->
+                                {% if user.is_chef %}
+                                <!-- Заказы на кухне -->
+                                <tr>
+                                    <td><i class="fas fa-utensils text-warning"></i> Заказы на кухне</td>
+                                    <td><a href="{% url 'chef_orders' %}" class="btn btn-sm btn-outline-warning">Перейти</a></td>
+                                    <td>Просмотр заказов и отметка готовности</td>
+                                </tr>
+                                {% endif %}
+                                
+                                <!-- Функции для администраторов -->
+                                {% if user.is_admin %}
+                                <!-- Управление блюдами -->
+                                <tr>
+                                    <td><i class="fas fa-utensils text-danger"></i> Управление блюдами</td>
+                                    <td><a href="{% url 'manage_dishes' %}" class="btn btn-sm btn-outline-danger">Перейти</a></td>
+                                    <td>Добавление и редактирование блюд</td>
+                                </tr>
+                                <!-- Управление пользователями -->
+                                <tr>
+                                    <td><i class="fas fa-users-cog text-danger"></i> Управление пользователями</td>
+                                    <td><a href="{% url 'manage_users' %}" class="btn btn-sm btn-outline-danger">Перейти</a></td>
+                                    <td>Назначение ролей и управление аккаунтами</td>
+                                </tr>
+                                <!-- Статистика системы -->
+                                <tr>
+                                    <td><i class="fas fa-chart-bar text-primary"></i> Статистика системы</td>
+                                    <td><a href="{% url 'statistics' %}" class="btn btn-sm btn-outline-primary">Перейти</a></td>
+                                    <td>Аналитика посещаемости и оплат</td>
+                                </tr>
+                                <!-- Админ-панель Django -->
+                                <tr>
+                                    <td><i class="fas fa-cogs text-secondary"></i> Админка Django</td>
+                                    <td><a href="/admin/" target="_blank" class="btn btn-sm btn-outline-secondary">Перейти</a></td>
+                                    <td>Полный доступ к системе управления</td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- CSS стили для оформления страницы -->
+<style>
+    .card {
+        transition: transform 0.3s ease;
+        border-radius: 10px;
+    }
+    .card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0,0,0,0.1) !important;
+    }
+    .step-number .badge {
+        width: 70px;
+        height: 70px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.8rem;
+    }
+    .table th {
+        background-color: #f8f9fa;
+        font-weight: 600;
+    }
+    .lead {
+        font-size: 1.25rem;
+        font-weight: 300;
+    }
+    .display-4 {
+        color: #2c3e50;
+        font-weight: 700;
+    }
+    .btn-outline-danger {
+        border-width: 2px;
+    }
+    .alert-success {
+        border-radius: 8px;
+        border-left: 5px solid #28a745;
+    }
+</style>
+{% endblock %}

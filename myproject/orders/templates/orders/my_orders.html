@@ -1,0 +1,179 @@
+{% extends 'base.html' %}
+
+{% block title %}Мои заказы{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <h1 class="mb-4"><i class="fas fa-history"></i> Мои заказы</h1>
+    
+    <!-- Проверка роли пользователя - доступ только для учеников -->
+    {% if not user.is_student %}
+    <div class="alert alert-warning">
+        История заказов доступна только ученикам
+    </div>
+    {% else %}
+    
+    <!-- Навигация между активными заказами и историей -->
+    <div class="mb-4">
+        <a href="{% url 'my_orders' %}" class="btn btn-primary">
+            <i class="fas fa-clock"></i> Активные заказы
+        </a>
+        <a href="{% url 'order_history' %}" class="btn btn-outline-primary">
+            <i class="fas fa-history"></i> История заказов
+        </a>
+    </div>
+    
+    {% if orders %}
+        <p class="text-muted mb-3">Активных заказов: {{ orders|length }}</p>
+        
+        <!-- Цикл по активным заказам пользователя -->
+        {% for order in orders %}
+        <div class="card mb-4 shadow-sm">
+            <!-- Заголовок карточки с информацией о заказе -->
+            <div class="card-header bg-light">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h4 class="mb-1">Заказ #{{ order.id }}</h4>
+                        <small class="text-muted">{{ order.created_at|date:"d.m.Y H:i" }}</small>
+                    </div>
+                    <div>
+                        <!-- Бейдж статуса заказа с цветовым кодированием -->
+                        <span class="badge 
+                            {% if order.status == 'pending' %}bg-warning
+                            {% elif order.status == 'preparing' %}bg-info
+                            {% elif order.status == 'ready' %}bg-success
+                            {% else %}bg-secondary{% endif %}">
+                            {{ order.get_status_display }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card-body p-0">
+                <!-- Список блюд в заказе -->
+                <div class="list-group list-group-flush">
+                    {% for item in order.items.all %}
+                    <div class="list-group-item p-3">
+                        <div class="row align-items-center">
+                            <!-- Колонка с информацией о блюде -->
+                            <div class="col-md-7">
+                                <h5 class="mb-1 text-dark fw-bold">{{ item.dish.name }}</h5>
+                                {% if item.dish.description %}
+                                <p class="text-muted mb-0 small">{{ item.dish.description|truncatechars:100 }}</p>
+                                {% endif %}
+                            </div>
+                            
+                            <!-- Колонка с ценой и количеством -->
+                            <div class="col-md-3">
+                                <div class="d-flex justify-content-between">
+                                    <div>
+                                        <small class="text-muted d-block">Цена:</small>
+                                        <span class="text-secondary">{{ item.price_at_time }} руб.</span>
+                                    </div>
+                                    <div>
+                                        <small class="text-muted d-block">Кол-во:</small>
+                                        <span class="badge bg-light text-dark">{{ item.quantity }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Колонка с общей суммой за позицию -->
+                            <div class="col-md-2 text-end">
+                                <small class="text-muted d-block">Сумма:</small>
+                                <span class="fw-bold">{{ item.get_total }} руб.</span>
+                            </div>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <!-- Сообщение для пустого заказа -->
+                    <div class="list-group-item text-center py-3">
+                        <p class="text-muted mb-0">Нет блюд в заказе</p>
+                    </div>
+                    {% endfor %}
+                </div>
+                
+                <!-- Футер с итоговой суммой и действиями -->
+                <div class="p-3 bg-light border-top">
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <h5 class="mb-0">Общая сумма: <span class="text-primary">{{ order.total_price }} руб.</span></h5>
+                        </div>
+                        <div class="col-md-6 text-md-end">
+                            <!-- Действия в зависимости от статуса заказа -->
+                            {% if order.status == 'ready' %}
+                            <!-- Форма подтверждения получения заказа -->
+                            <form method="post" action="{% url 'mark_picked' order.id %}" class="d-inline">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-success btn-lg">
+                                    <i class="fas fa-check-circle me-2"></i>Забрать заказ
+                                </button>
+                            </form>
+                            {% elif order.status in 'pending,preparing' %}
+                            <!-- Форма отмены заказа с подтверждением -->
+                            <form method="post" action="{% url 'cancel_order' order.id %}" class="d-inline">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-danger" 
+                                        onclick="return confirm('Вы уверены, что хотите отменить заказ?')">
+                                    <i class="fas fa-times me-2"></i>Отменить заказ
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <!-- Пустое состояние - нет активных заказов -->
+        <div class="card">
+            <div class="card-body text-center py-5">
+                <i class="fas fa-history fa-3x text-muted mb-3"></i>
+                <h4 class="mb-3">Нет активных заказов</h4>
+                <p class="text-muted mb-4">Создайте новый заказ!</p>
+                <a href="{% url 'menu' %}" class="btn btn-primary btn-lg">
+                    <i class="fas fa-utensils me-2"></i>Перейти в меню
+                </a>
+            </div>
+        </div>
+    {% endif %}
+    
+    {% endif %}
+</div>
+
+<!-- Встроенные стили для кастомизации компонентов -->
+<style>
+.card {
+    border-radius: 10px;
+    border: 1px solid #e9ecef;
+}
+.card-header {
+    border-bottom: 2px solid #e9ecef;
+    background-color: #f8f9fa !important;
+}
+.list-group-item {
+    border-color: #f8f9fa;
+}
+.list-group-item:hover {
+    background-color: #f8f9fa;
+}
+.btn-success {
+    padding: 0.5rem 1.5rem;
+    font-size: 1.1rem;
+}
+.btn-danger {
+    padding: 0.5rem 1.5rem;
+}
+.badge {
+    font-size: 0.9rem;
+    padding: 0.5em 1em;
+}
+</style>
+
+<!-- JavaScript для подтверждения отмены заказа -->
+<script>
+function confirmCancel() {
+    return confirm('Вы уверены, что хотите отменить заказ?');
+}
+</script>
+{% endblock %}

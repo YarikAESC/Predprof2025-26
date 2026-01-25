@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container">
+    <!-- Заголовок страницы корзины -->
+    <h1 class="mb-4">Корзина</h1>
+    
+    <!-- Блок для системных сообщений (успех, ошибки, предупреждения) -->
+    {% if messages %}
+    <div class="messages mb-3">
+        {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    
+    <!-- Проверка наличия товаров в корзине -->
+    {% if cart_items %}
+    <!-- Таблица с товарами в корзине -->
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Блюдо</th>
+                    <th>Цена</th>
+                    <th>Количество</th>
+                    <th>Сумма</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Цикл по всем товарам в корзине -->
+                {% for item in cart_items %}
+                <tr>
+                    <td>
+                        <!-- Название блюда и краткое описание -->
+                        <strong>{{ item.dish.name }}</strong><br>
+                        <small class="text-muted">{{ item.dish.description|truncatechars:50 }}</small>
+                    </td>
+                    <td>{{ item.dish.price }} руб.</td>
+                    <td>
+                        <!-- Форма для изменения количества товара -->
+                        <form method="post" action="{% url 'update_cart' item.dish.id %}" class="form-inline">
+                            {% csrf_token %}
+                            <input type="number" name="quantity" value="{{ item.quantity }}" 
+                                   min="1" max="10" class="form-control form-control-sm mr-2" style="width: 70px;">
+                            <button type="submit" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </form>
+                    </td>
+                    <td>{{ item.total }} руб.</td>
+                    <td>
+                        <!-- Кнопка удаления товара из корзины -->
+                        <a href="{% url 'remove_from_cart' item.dish.id %}" class="btn btn-sm btn-danger">
+                            <i class="fas fa-trash"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <!-- Строка с итоговой суммой заказа -->
+                <tr>
+                    <th colspan="3" class="text-right">Итого:</th>
+                    <th colspan="2">{{ total }} руб.</th>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+    
+    <!-- Блок кнопок действий -->
+    <div class="text-right mt-4">
+        <!-- Кнопка возврата к меню для продолжения покупок -->
+        <a href="{% url 'menu' %}" class="btn btn-secondary mr-2">
+            <i class="fas fa-chevron-left"></i> Продолжить покупки
+        </a>
+        <!-- Форма оформления заказа -->
+        <form method="post" action="{% url 'create_order' %}" class="d-inline">
+            {% csrf_token %}
+            <!-- Кнопка оформления заказа -->
+            <button type="submit" class="btn btn-success btn-lg">
+                <i class="fas fa-check"></i> Оформить заказ
+            </button>
+            <!-- Кнопка создания комбо-набора из выбранных блюд -->
+            <a href="{% url 'create_combo_set' %}" class="btn btn-info btn-lg">
+                <i class="fas fa-layer-group"></i> Создать комбо-набор
+            </a>
+        </form>
+    </div>
+    {% else %}
+    <!-- Блок отображается, если корзина пуста -->
+    <div class="alert alert-warning">
+        <p>Ваша корзина пуста.</p>
+        <!-- Кнопка перехода к меню -->
+        <a href="{% url 'menu' %}" class="btn btn-primary">Перейти к меню</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
