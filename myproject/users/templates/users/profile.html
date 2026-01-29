@@ -1,0 +1,45 @@
+{% extends 'users/base.html' %}
+
+{% block title %}Профиль{% endblock %}
+
+{% block content %}
+<h2>Ваш профиль</h2>
+
+<!-- Статус пользователя -->
+<div style="margin-bottom: 20px; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+    <p style="margin: 0;">
+        <strong>Роль:</strong> 
+        <span style="padding: 3px 8px; border-radius: 3px; 
+            {% if user.role == 'student' %}background: #28a745; color: white;
+            {% elif user.role == 'admin' %}background: #dc3545; color: white;
+            {% else %}background: #ffc107; color: black;{% endif %}">
+            {% if user.role == 'student' %}Ученик
+            {% elif user.role == 'admin' %}Администратор
+            {% else %}Повар{% endif %}
+        </span>
+    </p>
+</div>
+
+<!-- Основная информация -->
+<div style="margin-bottom: 30px;">
+    <h3>Личная информация</h3>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div><strong>Имя пользователя:</strong><br>{{ user.username }}</div>
+        <div><strong>Email:</strong><br>{{ user.email }}</div>
+        <div><strong>Имя:</strong><br>{{ user.first_name|default:"Не указано" }}</div>
+        <div><strong>Фамилия:</strong><br>{{ user.last_name|default:"Не указано" }}</div>
+        <div><strong>Телефон:</strong><br>{{ user.phone|default:"Не указан" }}</div>
+        <div><strong>Дата рождения:</strong><br>{{ user.birth_date|date:"d.m.Y"|default:"Не указана" }}</div>
+    </div>
+    <p style="margin-top: 10px;"><strong>Дата регистрации:</strong> {{ user.date_joined|date:"d.m.Y H:i" }}</p>
+</div>
+
+<!-- Аватар -->
+{% if user.avatar %}
+<div style="margin-bottom: 20px; text-align: center;">
+    <p><strong>Аватар:</strong></p>
+    <img src="{{ user.avatar.url }}" alt="Аватар" 
+         style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 3px solid #007bff;">
+</div>
+{% endif %}
+{% endblock %}
