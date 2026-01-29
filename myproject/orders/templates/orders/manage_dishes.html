@@ -1,0 +1,287 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container">
+    <!-- Заголовок страницы управления блюдами -->
+    <h1 class="mb-4">Управление блюдами</h1>
+
+    <!-- Блок с кнопками навигации -->
+    <div class="mb-3">
+        <!-- Кнопка возврата на главную -->
+        <a href="{% url 'home' %}" class="btn btn-secondary">Назад</a>
+        <!-- Кнопка добавления нового блюда -->
+        <a href="{% url 'add_dish' %}" class="btn btn-success">+ Добавить новое блюдо</a>
+    </div>
+
+    <!-- Карточка для быстрого добавления ингредиента -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">Добавить новый ингредиент</h5>
+            <!-- Форма добавления ингредиента -->
+            <form method="post" action="{% url 'add_ingredient' %}" class="row g-2">
+                {% csrf_token %}
+                <!-- Поле для названия ингредиента -->
+                <div class="col-md-5">
+                    <input type="text" name="name" class="form-control" placeholder="Название" required>
+                </div>
+                <!-- Поле для единицы измерения -->
+                <div class="col-md-5">
+                    <input type="text" name="unit" class="form-control" placeholder="Ед. изм. (г, мл, шт...)" required>
+                </div>
+                <!-- Кнопка отправки формы -->
+                <div class="col-md-2 d-grid">
+                    <button type="submit" class="btn btn-outline-primary">+ Добавить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Основная таблица с блюдами -->
+    <div class="table-responsive">
+        <table class="table table-bordered table-striped table-hover">
+            <thead class="table-dark">
+                <tr>
+                    <th>ID</th>
+                    <th>Название</th>
+                    <th>Категория</th>
+                    <th>Цена (₽)</th>
+                    <th>Изображение</th>
+                    <th>Рейтинг</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Цикл по всем блюдам -->
+                {% for dish in dishes %}
+                <!-- Строка с информацией о блюде -->
+                <tr>
+                    <!-- ID блюда -->
+                    <td><small class="text-muted">#{{ dish.id }}</small></td>
+                    
+                    <!-- Название и описание блюда -->
+                    <td>
+                        <strong>{{ dish.name }}</strong>
+                        {% if dish.description %}
+                        <br><small class="text-muted">{{ dish.description|truncatechars:50 }}</small>
+                        {% endif %}
+                    </td>
+                    
+                    <!-- Категория блюда -->
+                    <td>{{ dish.category.name }}</td>
+                    
+                    <!-- Цена блюда -->
+                    <td><strong>{{ dish.price }}</strong></td>
+                    
+                    <!-- Изображение блюда с возможностью изменения -->
+                    <td>
+                        <div class="text-center">
+                            {% if dish.image %}
+                            <img src="{{ dish.image.url }}" alt="{{ dish.name }}" 
+                                 class="img-fluid rounded mb-2" style="max-height: 80px;">
+                            {% else %}
+                            <div class="bg-light rounded d-flex align-items-center justify-content-center mb-2" 
+                                 style="height: 80px; width: 80px;">
+                                <span class="text-muted">Нет фото</span>
+                            </div>
+                            {% endif %}
+                            
+                            <!-- Форма загрузки нового изображения -->
+                            <form method="post" action="{% url 'update_dish_image' dish.id %}" 
+                                  enctype="multipart/form-data" class="mt-2">
+                                {% csrf_token %}
+                                <div class="input-group input-group-sm">
+                                    <input type="file" name="image" class="form-control form-control-sm" 
+                                           accept="image/*" required>
+                                    <button type="submit" class="btn btn-primary btn-sm">
+                                        <i class="fas fa-upload"></i>
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </td>
+                    
+                    <!-- Рейтинг блюда -->
+                    <td>
+                        {% if dish.reviews.count > 0 %}
+                            <div class="d-flex align-items-center">
+                                <div class="me-1">
+                                    {% for i in "12345" %}
+                                        {% if forloop.counter <= dish.average_rating|floatformat:0 %}
+                                            <i class="fas fa-star text-warning" style="font-size: 0.8rem;"></i>
+                                        {% elif forloop.counter <= dish.average_rating|add:0.5 %}
+                                            <i class="fas fa-star-half-alt text-warning" style="font-size: 0.8rem;"></i>
+                                        {% else %}
+                                            <i class="far fa-star text-warning" style="font-size: 0.8rem;"></i>
+                                        {% endif %}
+                                    {% endfor %}
+                                </div>
+                                <div>
+                                    <span class="badge bg-info">{{ dish.average_rating|floatformat:1 }}/5</span>
+                                </div>
+                            </div>
+                        {% else %}
+                            <span class="text-muted small">Нет оценок</span>
+                        {% endif %}
+                    </td>
+                    
+                  
+                    <!-- Кнопки действий -->
+                    <td>
+                        <div class="d-grid gap-1">
+                            <!-- Кнопка редактирования блюда -->
+                            <a href="{% url 'edit_dish' dish.id %}" class="btn btn-sm btn-warning">
+                                <i class="fas fa-edit"></i> Редактировать
+                            </a>
+                            
+                            <!-- Кнопка показа ингредиентов -->
+                            <button class="btn btn-sm btn-outline-secondary" type="button"
+                                    data-bs-toggle="collapse" data-bs-target="#ingredients{{ dish.id }}">
+                                <i class="fas fa-carrot"></i> Ингредиенты
+                            </button>
+                            
+                            <!-- Кнопка отзывов -->
+                            <button class="btn btn-sm btn-info" type="button"
+                                    data-bs-toggle="collapse" data-bs-target="#reviews{{ dish.id }}">
+                                <i class="fas fa-comments"></i> Отзывы
+                                <span class="badge bg-light text-dark ms-1">{{ dish.reviews.count }}</span>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+
+                <!-- Раскрываемая секция с ингредиентами блюда -->
+                <tr class="collapse" id="ingredients{{ dish.id }}">
+                    <td colspan="8">
+                        <div class="card card-body bg-light">
+                            <h6><i class="fas fa-carrot me-2"></i>Ингредиенты "{{ dish.name }}"</h6>
+
+                            {% if dish.ingredients.all %}
+                                <!-- Список ингредиентов -->
+                                <ul class="list-group">
+                                    {% for ingredient in dish.ingredients.all %}
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>{{ ingredient.ingredient.name }}</strong>
+                                            <br>
+                                            <small class="text-muted">Ед. изм.: {{ ingredient.ingredient.unit }}</small>
+                                        </div>
+                                        <!-- Количество ингредиента -->
+                                        <span class="badge bg-primary rounded-pill">
+                                            {{ ingredient.quantity }} {{ ingredient.ingredient.unit }}
+                                        </span>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <!-- Сообщение если ингредиентов нет -->
+                                <div class="alert alert-warning mb-0">
+                                    <i class="fas fa-exclamation-circle"></i>
+                                    Ингредиенты не указаны
+                                </div>
+                            {% endif %}
+
+                            <!-- Кнопка редактирования ингредиентов -->
+                            <div class="mt-3">
+                                <a href="{% url 'edit_dish' dish.id %}#ingredients-section"
+                                   class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-edit"></i> Редактировать ингредиенты
+                                </a>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+
+                 <!-- Раскрываемая секция с отзывами на блюдо -->
+                <tr class="collapse" id="reviews{{ dish.id }}">
+                    <td colspan="8">
+                        <div class="card card-body bg-light">
+                            <h6><i class="fas fa-star me-2"></i>Отзывы на "{{ dish.name }}" ({{ dish.reviews.count }})</h6>
+
+                            {% if dish.reviews.all %}
+                                <!-- Цикл по всем отзывам -->
+                                {% for review in dish.reviews.all %}
+                                <div class="card mb-2">
+                                    <div class="card-body">
+                                        <!-- Информация о пользователе и заказе -->
+                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                            <div>
+                                                <strong>{{ review.user.username }}</strong>
+                                                <br>
+                                                <small class="text-muted">
+                                                    Заказ #{{ review.order.id }}, {{ review.created_at|date:"d.m.Y H:i" }}
+                                                </small>
+                                            </div>
+                                            <!-- Рейтинг отзыва -->
+                                            <div class="text-end">
+                                                <div class="mb-1">
+                                                    {% for i in "12345" %}
+                                                        {% if forloop.counter <= review.rating %}
+                                                            <i class="fas fa-star text-warning"></i>
+                                                        {% else %}
+                                                            <i class="far fa-star text-warning"></i>
+                                                        {% endif %}
+                                                    {% endfor %}
+                                                    <span class="badge bg-warning">{{ review.rating }}/5</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Текст комментария -->
+                                        {% if review.comment %}
+                                        <p class="mb-0">{{ review.comment }}</p>
+                                        {% else %}
+                                        <p class="text-muted mb-0"><em>Без комментария</em></p>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                                <!-- Сообщение если отзывов нет -->
+                                <div class="alert alert-warning mb-0">
+                                    <i class="fas fa-exclamation-circle"></i> 
+                                    На это блюдо еще нет отзывов
+                                </div>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <!-- Сообщение если блюд нет -->
+                <tr>
+                    <td colspan="8" class="text-center py-4">
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i> Нет добавленных блюд.
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- JavaScript для предпросмотра изображения -->
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Предпросмотр изображения при выборе файла
+        const fileInputs = document.querySelectorAll('input[type="file"][name="image"]');
+        
+        fileInputs.forEach(input => {
+            input.addEventListener('change', function(e) {
+                const form = this.closest('form');
+                const img = form.querySelector('img');
+                
+                if (this.files && this.files[0] && img) {
+                    const reader = new FileReader();
+                    
+                    reader.onload = function(e) {
+                        img.src = e.target.result;
+                    }
+                    
+                    reader.readAsDataURL(this.files[0]);
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,1735 @@
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth.decorators import login_required
+from django.contrib import messages
+from django.views.generic import ListView
+from django.core.exceptions import PermissionDenied
+from django.utils import timezone
+from django.db.models import Sum, Q
+from decimal import Decimal, InvalidOperation
+from .models import Dish, Order, OrderItem, IngredientCost, Category, OrderPickup, Payment, Transaction, Review, Ingredient, DishIngredient, ComboSet, ComboItem, ComboOrder, IngredientStock, StockHistory, PreparedDish
+from users.models import CustomUser
+from .utils import user_can_use_cart
+from django.db import models
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+
+
+# Показывает главную страницу сайта
+def home(request):
+    context = {}
+    
+    if request.user.is_authenticated and request.user.is_student():
+        # Получаем все ингредиенты для выбора аллергенов
+        context['available_ingredients'] = Ingredient.objects.all().order_by('name')
+    
+    return render(request, 'orders/home.html', context)
+
+# Класс для отображения списка блюд
+class MenuView(ListView):
+    model = Dish
+    template_name = 'orders/menu.html'
+    context_object_name = 'dishes'
+
+    # Получаем список блюд с фильтрацией
+    def get_queryset(self):
+        # Получаем ВСЕ блюда (не только is_available=True)
+        qs = Dish.objects.all() \
+            .select_related('category') \
+            .prefetch_related('ingredients__ingredient')
+
+        # Фильтр по категории, если выбран
+        category_id = self.request.GET.get('category')
+        if category_id:
+            qs = qs.filter(category_id=category_id)
+
+        # Убираем блюда с аллергенами для учеников
+        if self.request.user.is_authenticated and self.request.user.is_student():
+            user_allergens = self.request.user.allergens.all()
+            if user_allergens.exists():
+                qs = qs.exclude(
+                    ingredients__ingredient__in=user_allergens
+                ).distinct()
+
+        return qs
+
+    # Проверяем доступ к меню
+    def dispatch(self, request, *args, **kwargs):
+        # Только ученики могут смотреть меню
+        if not request.user.is_authenticated or not request.user.is_student():
+            messages.error(request, 'Меню доступно только ученикам')
+            return redirect('home')
+        return super().dispatch(request, *args, **kwargs)
+
+    # Добавляем дополнительные данные в шаблон
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['categories'] = Category.objects.all()
+
+        # Получаем информацию о готовых блюдах
+        prepared_dishes = {}
+        for prepared in PreparedDish.objects.all():
+            prepared_dishes[prepared.dish.id] = prepared.quantity
+        
+        # Обрабатываем каждое блюдо
+        dishes_with_info = []
+        for dish in context['dishes']:
+            # Количество готовых блюд
+            prepared_quantity = prepared_dishes.get(dish.id, 0)
+            dish.prepared_quantity = prepared_quantity
+            
+            # Блюдо доступно если:
+            # 1. Есть готовые блюда (prepared_quantity > 0)
+            # 2. ИЛИ is_available=True и есть ингредиенты для приготовления
+            if prepared_quantity > 0:
+                dish.is_available_in_menu = True
+            else:
+                # Проверяем обычную доступность
+                dish.is_available_in_menu = dish.is_available
+            
+            dishes_with_info.append(dish)
+        
+        context['dishes'] = dishes_with_info
+
+        # Информация о скрытых блюдах из-за аллергенов
+        if self.request.user.is_authenticated and self.request.user.is_student():
+            user_allergens = self.request.user.allergens.all()
+            if user_allergens.exists():
+                all_dishes = Dish.objects.all()
+                hidden_dishes = all_dishes.filter(
+                    ingredients__ingredient__in=user_allergens
+                ).distinct().count()
+                context['hidden_dishes_count'] = hidden_dishes
+                context['user_allergens'] = user_allergens
+
+        # Количество товаров в корзине
+        if hasattr(self.request.user, 'is_student') and self.request.user.is_student():
+            cart = self.request.session.get('cart', {})
+            context['cart_count'] = len(cart)
+            context['show_cart'] = True
+        else:
+            context['cart_count'] = 0
+            context['show_cart'] = False
+            
+        return context
+    
+@login_required
+@user_can_use_cart
+def add_to_cart(request, dish_id):
+    dish = get_object_or_404(Dish, id=dish_id)
+    cart = request.session.get('cart', {})
+    dish_id_str = str(dish_id)
+    
+    # Проверяем доступность блюда (готовые блюда + обычная доступность)
+    prepared_dish = PreparedDish.objects.filter(dish=dish).first()
+    prepared_quantity = prepared_dish.quantity if prepared_dish else 0
+    
+    # Блюдо доступно если есть готовые или оно доступно в меню
+    is_available = (prepared_quantity > 0) or dish.is_available
+    
+    if not is_available:
+        messages.error(request, f'"{dish.name}" временно недоступно')
+        return redirect('menu')
+    
+    # Увеличиваем количество или добавляем новое блюдо
+    if dish_id_str in cart:
+        cart[dish_id_str] += 1
+    else:
+        cart[dish_id_str] = 1
+    
+    request.session['cart'] = cart
+    messages.success(request, f'"{dish.name}" добавлено в корзину')
+    return redirect('menu')
+
+# Показывает содержимое корзины
+@login_required
+@user_can_use_cart
+def view_cart(request):
+    cart = request.session.get('cart', {})
+    cart_items = []
+    total = 0
+    all_available = True
+    
+    # Собираем информацию о каждом блюде в корзине
+    for dish_id_str, quantity in cart.items():
+        try:
+            dish_id = int(dish_id_str)
+            dish = Dish.objects.get(id=dish_id, is_available=True)
+            item_total = dish.price * quantity
+            
+            # Проверяем доступность
+            is_available, missing = dish.check_availability(quantity)
+            
+            cart_items.append({
+                'dish': dish,
+                'quantity': quantity,
+                'total': item_total,
+                'is_available': is_available,
+                'missing_ingredients': missing
+            })
+            total += item_total
+            
+            if not is_available:
+                all_available = False
+                
+        except (Dish.DoesNotExist, ValueError):
+            continue
+    
+    return render(request, 'orders/cart.html', {
+        'cart_items': cart_items,
+        'total': total,
+        'all_available': all_available
+    })
+
+# Меняет количество блюда в корзине
+@login_required
+@user_can_use_cart
+def update_cart(request, dish_id):
+    cart = request.session.get('cart', {})
+    dish_id_str = str(dish_id)
+    
+    if request.method == 'POST':
+        quantity = request.POST.get('quantity')
+        if quantity and quantity.isdigit():
+            quantity = int(quantity)
+            if quantity > 0:
+                cart[dish_id_str] = quantity  # Обновляем количество
+            else:
+                cart.pop(dish_id_str, None)  # Удаляем если 0
+        else:
+            cart.pop(dish_id_str, None)  # Удаляем если не число
+    
+    request.session['cart'] = cart
+    return redirect('view_cart')
+
+# Удаляет блюдо из корзины
+@login_required
+@user_can_use_cart
+def remove_from_cart(request, dish_id):
+    cart = request.session.get('cart', {})
+    dish_id_str = str(dish_id)
+    
+    if dish_id_str in cart:
+        del cart[dish_id_str]
+        request.session['cart'] = cart
+        messages.success(request, 'Блюдо удалено из корзины')
+    
+    return redirect('view_cart')
+
+@login_required
+def create_order(request):
+    if not request.user.is_student():
+        messages.error(request, 'Только ученики могут оформлять заказы')
+        return redirect('menu')
+
+    cart = request.session.get('cart', {})
+
+    if not cart:
+        messages.warning(request, 'Ваша корзина пуста')
+        return redirect('menu')
+
+    try:
+        # Проверяем доступность всех блюд (учитывая готовые блюда)
+        unavailable_items = []
+        order_items = []
+        total = 0
+        
+        for dish_id_str, quantity in cart.items():
+            try:
+                dish = Dish.objects.get(id=int(dish_id_str))
+                
+                # Проверяем доступность блюда (готовые блюда + ингредиенты)
+                is_available = False
+                prepared_quantity = 0
+                available_through_ingredients = False
+                
+                # 1. Проверяем готовые блюда
+                prepared_dish = PreparedDish.objects.filter(dish=dish).first()
+                if prepared_dish and prepared_dish.quantity >= quantity:
+                    prepared_quantity = prepared_dish.quantity
+                    is_available = True
+                else:
+                    # 2. Проверяем наличие ингредиентов для приготовления
+                    available_through_ingredients, missing = dish.check_availability(quantity)
+                    is_available = available_through_ingredients
+                
+                if is_available:
+                    order_items.append({
+                        'dish': dish,
+                        'quantity': quantity,
+                        'is_prepared': prepared_quantity >= quantity,
+                        'prepared_dish': prepared_dish if prepared_dish else None,
+                        'available_through_ingredients': available_through_ingredients,
+                        'prepared_quantity': prepared_quantity
+                    })
+                    total += dish.price * quantity
+                else:
+                    # Если блюдо недоступно
+                    if available_through_ingredients:
+                        # Есть ингредиенты, но не готовые блюда
+                        unavailable_items.append({
+                            'dish': dish,
+                            'quantity': quantity,
+                            'missing': [],
+                            'reason': 'not_prepared'
+                        })
+                    else:
+                        # Нет ингредиентов
+                        unavailable_items.append({
+                            'dish': dish,
+                            'quantity': quantity,
+                            'missing': missing,
+                            'reason': 'no_ingredients'
+                        })
+            except Dish.DoesNotExist:
+                unavailable_items.append({
+                    'dish_id': dish_id_str,
+                    'quantity': quantity,
+                    'reason': 'not_found'
+                })
+        
+        if unavailable_items:
+            # Показываем какие блюда недоступны
+            messages.error(request, 'Некоторые блюда недоступны')
+            return render(request, 'orders/order_unavailable.html', {
+                'unavailable_items': unavailable_items,
+                'cart': cart
+            })
+        
+        # Проверяем баланс
+        if not request.user.can_afford(total):
+            messages.error(request, f'Недостаточно средств. Нужно: {total} ₽, на балансе: {request.user.balance} ₽')
+            return redirect('my_balance')
+
+        # Создаем заказ
+        order = Order.objects.create(
+            customer=request.user,
+            status='pending',  # Ожидает готовых блюд
+            total_price=total
+        )
+
+        # Обрабатываем каждый товар в заказе
+        for item in order_items:
+            if item['is_prepared']:
+                # Выдаем готовые блюда
+                prepared_dish = item['prepared_dish']
+                if prepared_dish:
+                    prepared_dish.quantity -= item['quantity']
+                    prepared_dish.save()
+                
+                # Статус для этого блюда - готово
+                OrderItem.objects.create(
+                    order=order,
+                    dish=item['dish'],
+                    quantity=item['quantity'],
+                    price_at_time=item['dish'].price,
+                    status='ready'
+                )
+            else:
+                # Блюдо нужно приготовить из ингредиентов
+                success, _ = item['dish'].reserve_ingredients(item['quantity'], request.user)
+                if success:
+                    OrderItem.objects.create(
+                        order=order,
+                        dish=item['dish'],
+                        quantity=item['quantity'],
+                        price_at_time=item['dish'].price,
+                        status='preparing'
+                    )
+                else:
+                    # Отменяем заказ если не удалось зарезервировать
+                    order.delete()
+                    messages.error(request, 'Произошла ошибка при резервировании ингредиентов')
+                    return redirect('view_cart')
+        
+        # Проверяем статус заказа
+        all_items = order.items.all()
+        if all_items.count() > 0:
+            all_ready = all(item.status == 'ready' for item in all_items)
+            if all_ready:
+                order.status = 'ready'
+            else:
+                order.status = 'preparing'
+            order.save()
+        
+        # Списываем деньги
+        if request.user.deduct_balance(total, description=f"Оплата заказа #{order.id}"):
+            Payment.objects.create(
+                order=order,
+                user=request.user,
+                amount=total,
+                status='paid',
+                payment_method='balance',
+                completed_at=timezone.now(),
+                description=f"Оплата заказа #{order.id}"
+            )
+
+        # Очищаем корзину
+        request.session['cart'] = {}
+        
+        messages.success(request, f'Заказ #{order.id} оформлен!')
+        return redirect('my_orders')
+
+    except Exception as e:
+        messages.error(request, f'Ошибка: {str(e)}')
+        return redirect('view_cart')
+# Показывает активные заказы пользователя
+@login_required
+def my_orders(request):
+    try:
+        if not request.user.is_student():
+            messages.error(request, 'Доступно только для учеников')
+            return redirect('menu')
+
+        # Заказы в процессе (не завершенные)
+        orders = Order.objects.filter(
+            customer=request.user,
+            status__in=['pending', 'confirmed', 'preparing', 'ready']
+        ).order_by('-created_at')
+
+        return render(request, 'orders/my_orders.html', {'orders': orders})
+    except Exception as e:
+        messages.error(request, f'Ошибка загрузки заказов: {str(e)}')
+        return redirect('menu')
+
+# Показывает историю завершенных заказов
+@login_required
+def order_history(request):
+    try:
+        if not hasattr(request.user, 'role') or request.user.role != 'student':
+            messages.error(request, 'История заказов доступна только ученикам')
+            return redirect('home')
+
+        # Завершенные заказы (полученные или забранные)
+        orders = Order.objects.filter(
+            customer=request.user,
+            status__in=['picked_up', 'delivered']
+        ).select_related('customer').prefetch_related('items__dish').order_by('-created_at')
+
+        return render(request, 'orders/order_history.html', {
+            'orders': orders,
+            'user': request.user
+        })
+
+    except Exception as e:
+        messages.error(request, f'Ошибка загрузки истории заказов: {str(e)}')
+        return redirect('my_orders')
+
+# Отмечает что пользователь забрал свой заказ
+@login_required
+def mark_as_picked(request, order_id):
+    order = get_object_or_404(Order, id=order_id)
+    
+    # Проверяем что это заказ текущего пользователя
+    if order.customer != request.user:
+        messages.error(request, 'Вы не можете отметить этот заказ')
+        return redirect('my_orders')
+    
+    # Проверяем что заказ готов к выдаче
+    if order.status != 'ready':
+        messages.error(request, 'Заказ еще не готов')
+        return redirect('my_orders')
+    
+    # Меняем статус на "получен"
+    order.status = 'picked_up'
+    order.save()
+    
+    # Создаем запись о получении
+    OrderPickup.objects.get_or_create(
+        order=order,
+        defaults={'picked_up_by': request.user}
+    )
+
+    messages.success(request, 'Вы забрали заказ! Теперь он в истории заказов.')
+    return redirect('order_history')
+
+# Позволяет оставить отзыв на блюдо из заказа
+@login_required
+def add_review(request, order_id, dish_id):
+    order = get_object_or_404(Order, id=order_id, customer=request.user)
+    
+    # Отзыв можно оставить только на завершенный заказ
+    if order.status not in ['delivered', 'picked_up']:
+        messages.error(request, 'Отзыв можно оставить только на завершенный заказ')
+        return redirect('order_history')
+    
+    dish = get_object_or_404(Dish, id=dish_id)
+    
+    # Проверяем что это блюдо действительно было в заказе
+    if not order.items.filter(dish=dish).exists():
+        messages.error(request, 'Это блюдо не было в заказе')
+        return redirect('order_history')
+    
+    if request.method == 'POST':
+        # Сохраняем отзыв из формы
+        rating = request.POST.get('rating')
+        comment = request.POST.get('comment')
+        
+        Review.objects.create(
+            user=request.user,
+            dish=dish,
+            order=order,
+            rating=rating,
+            comment=comment
+        )
+        
+        messages.success(request, 'Спасибо за отзыв!')
+        return redirect('order_history')
+    
+    # Показываем форму для отзыва
+    return render(request, 'orders/add_review.html', {
+        'order': order,
+        'dish': dish
+    })
+
+# Показывает подробную информацию о заказе
+@login_required
+def order_detail(request, order_id):
+    order = get_object_or_404(Order, id=order_id)
+    order = Order.objects.prefetch_related(
+        'items__dish__ingredients__ingredient',
+        'customer__allergens').get(id=order_id)
+    
+    # Проверяем права: админ или владелец заказа
+    if not hasattr(request.user, 'role') or (request.user.role != 'admin' and order.customer != request.user):
+        messages.error(request, 'У вас нет прав для просмотра этого заказа')
+        return redirect('my_orders')
+    
+    return render(request, 'orders/order_detail.html', {'order': order})
+
+# Отменяет заказ пользователя
+@login_required
+def cancel_order(request, order_id):
+    order = get_object_or_404(Order, id=order_id, customer=request.user)
+    
+    # Можно отменять только заказы в определенных статусах
+    if order.status in ['pending', 'preparing']:
+        order.status = 'cancelled'
+        order.save()
+        messages.success(request, f'Заказ #{order.id} отменен')
+    else:
+        messages.error(request, 'Невозможно отменить заказ в текущем статусе')
+    
+    return redirect('my_orders')
+
+# Панель администратора с общей статистикой
+@login_required
+def admin_dashboard(request):
+    if not request.user.is_admin():
+        messages.error(request, 'Доступно только для администраторов')
+        return redirect('menu')
+    
+    # Собираем статистические данные
+    total_customers = CustomUser.objects.filter(role='customer').count()
+    total_chefs = CustomUser.objects.filter(role='chef').count()
+    total_dishes = Dish.objects.count()
+    total_orders = Order.objects.count()
+    active_orders = Order.objects.exclude(status__in=['delivered', 'cancelled']).count()
+    
+    context = {
+        'total_customers': total_customers,
+        'total_chefs': total_chefs,
+        'total_dishes': total_dishes,
+        'total_orders': total_orders,
+        'active_orders': active_orders,
+    }
+    return render(request, 'orders/admin_dashboard.html', context)
+
+# Управление блюдами (админ и повар)
+@login_required
+def manage_dishes(request):
+    # Повар и админ могут управлять блюдами
+    if not (request.user.is_admin() or request.user.is_chef()):
+        messages.error(request, 'Доступно только для администраторов и поваров')
+        return redirect('menu')
+    
+    dishes = Dish.objects.all().select_related('category')
+    categories = Category.objects.all()
+    
+    return render(request, 'orders/manage_dishes.html', {
+        'dishes': dishes,
+        'categories': categories,
+    })
+
+# Добавление нового блюда (админ и повар)
+@login_required
+def add_dish(request):
+    # Повар и админ могут добавлять блюда
+    if not (request.user.is_admin() or request.user.is_chef()):
+        raise PermissionDenied("Только для администраторов и поваров")
+
+    if request.method == 'POST':
+        # Получаем данные из формы
+        name = request.POST.get('name')
+        description = request.POST.get('description')
+        price = request.POST.get('price')
+        category_id = request.POST.get('category')
+        is_available = bool(request.POST.get('is_available'))
+        image = request.FILES.get('image')
+
+        try:
+            category = Category.objects.get(id=category_id)
+            # Создаем блюдо в базе данных
+            dish = Dish.objects.create(
+                name=name,
+                description=description,
+                price=price,
+                category=category,
+                is_available=is_available,
+                image=image,
+                created_by=request.user
+            )
+
+            # Добавляем ингредиенты блюда
+            ingredients = request.POST.getlist('ingredient')
+            quantities = request.POST.getlist('quantity')
+            for ing_id, qty in zip(ingredients, quantities):
+                if ing_id and qty:
+                    DishIngredient.objects.create(
+                        dish=dish,
+                        ingredient_id=ing_id,
+                        quantity=qty
+                    )
+
+            messages.success(request, f'Блюдо "{dish.name}" и ингредиенты добавлены!')
+            return redirect('manage_dishes')
+
+        except Exception as e:
+            messages.error(request, f'Ошибка: {str(e)}')
+
+    # Показываем форму для добавления блюда
+    categories = Category.objects.all()
+    ingredients = Ingredient.objects.all()
+    return render(request, 'orders/add_dish.html', {
+        'categories': categories,
+        'ingredients': ingredients
+    })
+
+# Редактирование существующего блюда (админ и повар)
+@login_required
+def edit_dish(request, dish_id):
+    if not (request.user.is_admin() or request.user.is_chef()):
+        raise PermissionDenied("Только для администраторов и поваров")
+
+    dish = get_object_or_404(Dish, id=dish_id)
+
+    if request.method == 'POST':
+        # Обновляем данные блюда
+        dish.name = request.POST.get('name')
+        dish.description = request.POST.get('description')
+        dish.category_id = request.POST.get('category')
+        dish.is_available = bool(request.POST.get('is_available'))
+
+        # Только админ может менять цену при редактировании
+        if request.user.is_admin():
+            dish.price = request.POST.get('price')
+        # Повар не может изменить цену - остаётся текущая
+
+        if request.FILES.get('image'):
+            dish.image = request.FILES.get('image')
+        dish.save()
+
+        # Обновляем ингредиенты (удаляем старые, добавляем новые)
+        DishIngredient.objects.filter(dish=dish).delete()
+        ingredients = request.POST.getlist('ingredient')
+        quantities = request.POST.getlist('quantity')
+        for ing_id, qty in zip(ingredients, quantities):
+            if ing_id and qty:
+                DishIngredient.objects.create(
+                    dish=dish,
+                    ingredient_id=ing_id,
+                    quantity=qty
+                )
+
+        messages.success(request, f'Блюдо "{dish.name}" и ингредиенты обновлены!')
+        return redirect('manage_dishes')
+
+    # Показываем форму редактирования с текущими данными
+    categories = Category.objects.all()
+    ingredients = Ingredient.objects.all()
+    existing_ingredients = dish.ingredients.all()
+    return render(request, 'orders/edit_dish.html', {
+        'dish': dish,
+        'categories': categories,
+        'ingredients': ingredients,
+        'existing_ingredients': existing_ingredients
+    })
+
+# Изменение роли пользователя (админ)
+@login_required
+def change_user_role(request, user_id):
+    if not request.user.is_admin():
+        raise PermissionDenied("Только для администраторов")
+    
+    user = get_object_or_404(CustomUser, id=user_id)
+    
+    if request.method == 'POST':
+        new_role = request.POST.get('role')
+        if new_role in ['admin', 'customer', 'chef']:
+            user.role = new_role
+            user.save()
+            messages.success(request, f'Роль пользователя {user.username} изменена на {user.get_role_display()}')
+    
+    return redirect('manage_users')
+
+# Изменение статуса заказа
+@login_required
+def update_order_status(request, order_id):
+    order = get_object_or_404(Order, id=order_id)
+    
+    if request.method == 'POST':
+        new_status = request.POST.get('status')
+        
+        # Если это повар
+        if request.user.is_chef():
+            if order.status == 'preparing' and new_status == 'ready':
+                order.status = new_status
+                order.save()
+                messages.success(request, f'Заказ #{order.id} отмечен как готовый!')
+            else:
+                messages.error(request, 'Невозможно изменить статус')
+            return redirect('chef_orders')
+        
+        # Если это админ
+        elif request.user.is_admin():
+            if new_status in dict(Order.STATUS_CHOICES):
+                order.status = new_status
+                order.save()
+                messages.success(request, f'Статус заказа #{order.id} изменен')
+            return redirect('manage_orders')
+    
+    return redirect('menu')
+
+# Заказы для повара (которые нужно приготовить)
+@login_required
+def chef_orders(request):
+    if not request.user.is_chef():
+        messages.error(request, 'Доступно только для поваров')
+        return redirect('menu')
+    
+    orders = Order.objects.filter(status='preparing') \
+        .select_related('customer') \
+        .prefetch_related(
+        'items__dish__ingredients__ingredient',
+        'customer__allergens') \
+        .order_by('created_at')
+    
+    return render(request, 'orders/chef_orders.html', {'orders': orders})
+
+@login_required  
+def manage_orders(request):
+    if not request.user.is_admin():
+        messages.error(request, 'Доступно только для администраторов')
+        return redirect('menu')
+
+    # Получаем все заказы
+    orders_list = Order.objects.all() \
+        .select_related('customer') \
+        .prefetch_related('items__dish') \
+        .order_by('-created_at')
+    
+    # Статистика
+    total_orders = Order.objects.count()
+    active_orders = Order.objects.exclude(
+        status__in=['delivered', 'picked_up', 'cancelled']
+    ).count()
+    completed_orders = Order.objects.filter(
+        status__in=['delivered', 'picked_up']
+    ).count()
+    cancelled_orders = Order.objects.filter(status='cancelled').count()
+    
+    # Пагинация
+    page = request.GET.get('page', 1)
+    paginator = Paginator(orders_list, 20)  # 20 заказов на страницу
+    try:
+        orders = paginator.page(page)
+    except PageNotAnInteger:
+        orders = paginator.page(1)
+    except EmptyPage:
+        orders = paginator.page(paginator.num_pages)
+    
+    context = {
+        'orders': orders,
+        'status_choices': Order.STATUS_CHOICES,
+        'total_orders': total_orders,
+        'active_orders': active_orders,
+        'completed_orders': completed_orders,
+        'cancelled_orders': cancelled_orders,
+    }
+    return render(request, 'orders/manage_orders.html', context)
+
+# Отметка заказа как оплаченного (админ)
+@login_required
+def mark_as_paid(request, order_id):
+    if not request.user.is_admin():
+        messages.error(request, 'Только администратор')
+        return redirect('menu')
+    
+    order = get_object_or_404(Order, id=order_id)
+    
+    # Создаем запись об оплате
+    Payment.objects.create(
+        order=order,
+        user=order.customer,
+        amount=order.total_price,
+        status='paid',
+        completed_at=timezone.now()
+    )
+    
+    messages.success(request, f'Заказ #{order.id} отмечен как оплаченный')
+    return redirect('statistics')
+
+# Статистика для администратора
+@login_required
+def statistics(request):
+    if not request.user.is_admin():
+        messages.error(request, 'Только для администраторов')
+        return redirect('menu')
+    
+    today = timezone.now().date()
+    
+    try:
+        # Статистика по пользователям
+        total_users = CustomUser.objects.count()
+        total_students = CustomUser.objects.filter(role='student').count()
+        total_chefs = CustomUser.objects.filter(role='chef').count()
+        total_admins = CustomUser.objects.filter(role='admin').count()
+
+        recent_users = CustomUser.objects.all().order_by('-date_joined')[:10]
+
+        # Финансовая статистика - ДОХОДЫ
+        total_payments = Payment.objects.filter(status='paid')
+        total_income = total_payments.aggregate(Sum('amount'))['amount__sum'] or Decimal('0')
+        
+        today_payments = Payment.objects.filter(
+            status='paid',
+            created_at__date=today
+        )
+        today_income = today_payments.aggregate(Sum('amount'))['amount__sum'] or Decimal('0')
+        
+        # Финансовая статистика - РАСХОДЫ (затраты на ингредиенты)
+        # Получаем общую стоимость всех операций пополнения запасов
+        restock_history = StockHistory.objects.filter(operation_type='restock')
+        total_ingredient_cost = restock_history.aggregate(Sum('total_cost'))['total_cost__sum'] or Decimal('0')
+        
+        # Затраты сегодня
+        today_restock_history = StockHistory.objects.filter(
+            operation_type='restock',
+            created_at__date=today
+        )
+        today_ingredient_cost = today_restock_history.aggregate(Sum('total_cost'))['total_cost__sum'] or Decimal('0')
+        
+        # Статистика активности
+        today_logged_users = CustomUser.objects.filter(
+            last_login__date=today
+        ).order_by('-last_login')
+        
+        # Статистика по запасам
+        low_stock_count = IngredientStock.objects.filter(
+            current_quantity__lte=models.F('min_quantity')
+        ).count()
+        
+        out_of_stock_count = IngredientStock.objects.filter(
+            current_quantity__lte=0
+        ).count()
+        
+        # Расчет прибыли (доходы - расходы)
+        profit = total_income - total_ingredient_cost
+        
+        context = {
+            'total_users': total_users,
+            'total_students': total_students,
+            'total_chefs': total_chefs,
+            'total_admins': total_admins,
+            'recent_users': recent_users,
+            'today_logged_users': today_logged_users,
+            'today_logins': today_logged_users.count(),
+            
+            'total_income': total_income,
+            'today_income': today_income,
+            'total_payments': total_payments.count(),
+            'today_payments': today_payments.count(),
+            
+            # Добавлены затраты на ингредиенты
+            'total_ingredient_cost': total_ingredient_cost,
+            'today_ingredient_cost': today_ingredient_cost,
+            'profit': profit,
+            
+            'low_stock_count': low_stock_count,
+            'out_of_stock_count': out_of_stock_count,
+        }
+        
+    except Exception as e:
+        messages.error(request, f'Ошибка загрузки статистики: {str(e)}')
+        context = {}
+    
+    return render(request, 'orders/statistics.html', context)
+# Личный кабинет с балансом пользователя
+@login_required
+def my_balance(request):
+    transactions = Transaction.objects.filter(user=request.user).order_by('-created_at')
+    
+    recent_orders = Order.objects.filter(customer=request.user).order_by('-created_at')[:5]
+    
+    context = {
+        'user': request.user,
+        'transactions': transactions,
+        'recent_orders': recent_orders,
+    }
+    return render(request, 'orders/my_balance.html', context)
+
+# Пополнение баланса
+@login_required
+def add_balance(request):
+    if request.method == 'POST':
+        amount = request.POST.get('amount')
+
+        try:
+            amount = Decimal(amount)
+            if amount <= 0:
+                messages.error(request, 'Сумма должна быть положительной')
+                return redirect('my_balance')
+
+            # Пополняем баланс пользователя
+            request.user.add_balance(
+                amount,
+                description=f"Пополнение через сайт"
+            )
+
+            # Создаем запись о платеже
+            Payment.objects.create(
+                user=request.user,
+                amount=amount,
+                status='paid',
+                payment_method='balance',
+                completed_at=timezone.now(),
+                description=f"Пополнение баланса"
+            )
+
+            messages.success(request, f'Баланс пополнен на {amount} руб.')
+            return redirect('my_balance')
+
+        except (ValueError, InvalidOperation):
+            messages.error(request, 'Некорректная сумма')
+
+    return render(request, 'orders/add_balance.html')
+
+# Оплата заказа с баланса
+@login_required
+def pay_with_balance(request, order_id):
+    order = get_object_or_404(Order, id=order_id, customer=request.user)
+
+    if order.status != 'pending':
+        messages.error(request, 'Невозможно оплатить этот заказ')
+        return redirect('order_detail', order_id=order_id)
+
+    if request.user.can_afford(order.total_price):
+        # Списываем деньги с баланса
+        if request.user.deduct_balance(
+                order.total_price,
+                description=f"Оплата заказа #{order.id}"
+        ):
+            # Создаем запись об оплате
+            payment = Payment.objects.create(
+                order=order,
+                user=request.user,
+                amount=order.total_price,
+                status='paid',
+                payment_method='balance',
+                completed_at=timezone.now(),
+                description=f"Оплата заказа #{order.id}"
+            )
+
+            # Меняем статус заказа
+            order.status = 'preparing'
+            order.save()
+
+            messages.success(request, f'Заказ #{order.id} оплачен с баланса')
+            return redirect('order_detail', order_id=order_id)
+
+    messages.error(request, 'Недостаточно средств на балансе')
+    return redirect('order_detail', order_id=order_id)
+
+# Добавление нового ингредиента (админ и повар)
+@login_required
+def add_ingredient(request):
+    # Повар и админ могут добавлять ингредиенты
+    if not (request.user.is_admin() or request.user.is_chef()):
+        raise PermissionDenied("Только для администраторов и поваров")
+
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        unit = request.POST.get('unit', '').strip()
+        if name and unit:
+            # Проверяем нет ли уже такого ингредиента
+            obj, created = Ingredient.objects.get_or_create(
+                name__iexact=name,
+                defaults={'name': name, 'unit': unit}
+            )
+            if created:
+                # Создаем запись о запасе
+                IngredientStock.objects.create(
+                    ingredient=obj,
+                    current_quantity=0,
+                    unit=unit
+                )
+                messages.success(request, f'Ингредиент «{obj.name}» добавлен.')
+            else:
+                messages.warning(request, 'Такой ингредиент уже есть.')
+        else:
+            messages.error(request, 'Заполните оба поля.')
+        return redirect('manage_dishes')
+
+    return redirect('manage_dishes')
+
+# Управление пользователями (админ)
+@login_required
+def manage_users(request):
+    if not request.user.is_admin():
+        raise PermissionDenied("Только для администраторов")
+
+    users = CustomUser.objects.all()
+    return render(request, 'orders/manage_users.html', {'users': users})
+
+# Главная страница комбо-наборов
+@login_required
+def my_combo(request):
+    try:
+        combo_sets_count = ComboSet.objects.filter(created_by=request.user).count()
+    except:
+        combo_sets_count = 0
+    
+    context = {
+        'combo_sets_count': combo_sets_count,
+        'user': request.user
+    }
+    return render(request, 'orders/combo.html', context) 
+
+# Создание комбо-набора из корзины
+@login_required
+@user_can_use_cart
+def create_combo_set(request):
+    if not request.user.is_student():
+        messages.error(request, 'Только ученики могут создавать комбо-наборы')
+        return redirect('menu')
+
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        description = request.POST.get('description', '').strip()
+        max_orders = request.POST.get('max_orders', '1').strip()
+
+        if not name:
+            messages.error(request, 'Введите название набора')
+            return redirect('view_cart')
+
+        try:
+            max_orders = int(max_orders)
+            if max_orders < 1 or max_orders > 100:
+                messages.error(request, 'Количество повторов должно быть от 1 до 100')
+                return redirect('view_cart')
+        except ValueError:
+            messages.error(request, 'Некорректное количество повторов')
+            return redirect('view_cart')
+
+        # Собираем блюда из формы
+        cart_items = []
+        single_price = 0
+
+        for key, value in request.POST.items():
+            if key.startswith('quantity_') and value:
+                try:
+                    dish_id = int(key.replace('quantity_', ''))
+                    quantity = int(value)
+                    if quantity > 0:
+                        dish = Dish.objects.get(id=dish_id, is_available=True)
+                        item_total = dish.price * quantity
+                        cart_items.append({
+                            'dish': dish,
+                            'quantity': quantity,
+                            'total': item_total
+                        })
+                        single_price += item_total
+                except (ValueError, Dish.DoesNotExist):
+                    continue
+
+        if not cart_items:
+            messages.error(request, 'Добавьте хотя бы одно блюдо в набор')
+            return redirect('view_cart')
+
+        try:
+            # Общая стоимость = цена одного набора * количество повторов
+            total_price = single_price * max_orders
+
+            # Проверяем хватает ли денег
+            if not request.user.can_afford(total_price):
+                messages.error(request,
+                               f'Недостаточно средств. Нужно: {total_price} ₽, на балансе: {request.user.balance} ₽')
+                return redirect('my_balance')
+
+            # Создаем комбо-набор в базе данных
+            combo_set = ComboSet.objects.create(
+                name=name,
+                description=description,
+                created_by=request.user,
+                total_price=single_price,
+                is_active=True,
+                max_orders=max_orders,
+                orders_used=0
+            )
+
+            # Добавляем блюда в набор
+            for item in cart_items:
+                ComboItem.objects.create(
+                    combo_set=combo_set,
+                    dish=item['dish'],
+                    quantity=item['quantity']
+                )
+
+            # Списываем деньги с баланса
+            if request.user.deduct_balance(total_price,
+                                           description=f"Оплата комбо-набора '{name}' (x{max_orders} заказов по {single_price} ₽)"):
+                Payment.objects.create(
+                    user=request.user,
+                    amount=total_price,
+                    status='paid',
+                    payment_method='balance',
+                    completed_at=timezone.now(),
+                    description=f"Оплата комбо-набора '{name}' (x{max_orders} заказов по {single_price} ₽)"
+                )
+
+            messages.success(request,
+                             f'Комбо-набор "{name}" создан! Оплачено {total_price} ₽ за {max_orders} заказов.')
+            return redirect('my_combo_sets')
+
+        except Exception as e:
+            messages.error(request, f'Ошибка создания набора: {str(e)}')
+            return redirect('view_cart')
+
+    # Показываем форму с данными из корзины
+    cart = request.session.get('cart', {})
+    cart_items = []
+    single_price = 0
+
+    for dish_id_str, quantity in cart.items():
+        try:
+            dish_id = int(dish_id_str)
+            dish = Dish.objects.get(id=dish_id, is_available=True)
+            item_total = dish.price * quantity
+            cart_items.append({
+                'dish': dish,
+                'quantity': quantity,
+                'total': item_total
+            })
+            single_price += item_total
+        except (Dish.DoesNotExist, ValueError):
+            continue
+
+    if not cart_items:
+        messages.warning(request, 'Добавьте блюда в корзину для создания набора')
+        return redirect('menu')
+
+    return render(request, 'orders/create_combo_set.html', {
+        'cart_items': cart_items,
+        'single_price': single_price,
+        'total': single_price
+    })
+
+# Список комбо-наборов пользователя
+@login_required
+def my_combo_sets(request):
+    if not request.user.is_student():
+        messages.error(request, 'Только ученики могут создавать комбо-наборы')
+        return redirect('menu')
+
+    combo_sets = ComboSet.objects.filter(
+        created_by=request.user
+    ).filter(
+        models.Q(is_active=True) | models.Q(orders_used__lt=models.F('max_orders'))
+    ).prefetch_related('items__dish').order_by('-created_at')
+
+    return render(request, 'orders/my_combo_sets.html', {
+        'combo_sets': combo_sets
+    })
+
+# Заказ комбо-набора
+@login_required
+def order_combo_set(request, combo_id):
+    combo_set = get_object_or_404(ComboSet, id=combo_id, is_active=True)
+
+    # Проверяем не исчерпан ли лимит заказов
+    if combo_set.remaining_orders <= 0:
+        messages.error(request, 'Лимит заказов этого набора исчерпан')
+        return redirect('my_combo_sets')
+
+    if combo_set.created_by != request.user:
+        messages.error(request, 'Вы не можете заказать этот набор')
+        return redirect('my_combo_sets')
+
+    # Создаем заказ комбо-набора
+    combo_order = ComboOrder.objects.create(
+        combo_set=combo_set,
+        customer=request.user,
+        status='preparing'
+    )
+
+    # Создаем обычный заказ для повара
+    order = Order.objects.create(
+        customer=request.user,
+        status='preparing',
+        total_price=combo_set.total_price,
+        notes=f"Комбо-набор: {combo_set.name}"
+    )
+
+    # Добавляем блюда в заказ
+    for item in combo_set.items.all():
+        OrderItem.objects.create(
+            order=order,
+            dish=item.dish,
+            quantity=item.quantity,
+            price_at_time=item.dish.price
+        )
+    # Увеличиваем счетчик использования набора
+    combo_set.increment_usage()
+    messages.success(request,f'Заказ комбо-набора "{combo_set.name}" создан! Повар получил уведомление.')
+    return redirect('my_combo_orders')
+
+# Заказы комбо-наборов пользователя
+@login_required
+def my_combo_orders(request):
+    if not request.user.is_student():
+        messages.error(request, 'Только ученики могут заказывать комбо-наборы')
+        return redirect('menu')
+
+    combo_orders = ComboOrder.objects.filter(
+        customer=request.user
+    ).select_related('combo_set').order_by('-created_at')
+
+    return render(request, 'orders/my_combo_orders.html', {
+        'combo_orders': combo_orders
+    })
+
+# Отмена заказа комбо-набора
+@login_required
+def cancel_combo_order(request, order_id):
+    combo_order = get_object_or_404(ComboOrder, id=order_id, customer=request.user)
+
+    if combo_order.status in ['preparing']:
+        combo_order.status = 'cancelled'
+        combo_order.save()
+        messages.success(request, f'Заказ комбо-набора отменен')
+    else:
+        messages.error(request, 'Невозможно отменить заказ в текущем статусе')
+
+    return redirect('my_combo_orders')
+
+# Заказы комбо-наборов для повара
+@login_required
+def chef_combo_orders(request):
+    if not request.user.is_chef():
+        messages.error(request, 'Доступно только для поваров')
+        return redirect('menu')
+
+    combo_orders = ComboOrder.objects.filter(
+        status='preparing'
+    ).select_related('combo_set', 'customer').prefetch_related(
+        'combo_set__items__dish'
+    ).order_by('created_at')
+
+    return render(request, 'orders/chef_combo_orders.html', {
+        'combo_orders': combo_orders
+    })
+
+# Изменение статуса заказа комбо-набора (повар)
+@login_required
+def update_combo_order_status(request, order_id):
+    if not request.user.is_chef():
+        messages.error(request, 'Доступно только для поваров')
+        return redirect('menu')
+
+    combo_order = get_object_or_404(ComboOrder, id=order_id)
+
+    if request.method == 'POST':
+        new_status = request.POST.get('status')
+
+        if new_status in ['ready', 'preparing']:
+            combo_order.status = new_status
+            combo_order.save()
+
+            if new_status == 'ready':
+                messages.success(request, f'Комбо-набор #{combo_order.id} отмечен как готовый!')
+            else:
+                messages.success(request, f'Статус комбо-набора обновлен')
+
+    return redirect('chef_combo_orders')
+
+@login_required
+def chef_inventory(request):
+    #Страница управления запасами для повара
+    if not request.user.is_chef():
+        messages.error(request, 'Доступно только для поваров')
+        return redirect('menu')
+    
+    # Создаем IngredientStock для ингредиентов, у которых его еще нет
+    ingredients_without_stock = Ingredient.objects.filter(stock__isnull=True)
+    for ingredient in ingredients_without_stock:
+        IngredientStock.objects.create(
+            ingredient=ingredient,
+            current_quantity=0,
+            min_quantity=10,  # Значение по умолчанию
+            unit=ingredient.unit
+        )
+        messages.info(request, f'Создан запас для ингредиента: {ingredient.name}')
+    
+    # Получаем все запасы с ингредиентами
+    stocks = IngredientStock.objects.all().select_related('ingredient').order_by('ingredient__name')
+    
+    # Статистика
+    total_stocks = stocks.count()
+    low_stock_count = stocks.filter(
+        models.Q(current_quantity__lte=models.F('min_quantity')) &
+        models.Q(current_quantity__gt=0)
+    ).count()
+    out_of_stock_count = stocks.filter(current_quantity__lte=0).count()
+    
+    context = {
+        'stocks': stocks,
+        'total_stocks': total_stocks,
+        'low_stock_count': low_stock_count,
+        'out_of_stock_count': out_of_stock_count,
+    }
+    return render(request, 'orders/chef_inventory.html', context)
+
+@login_required
+def request_restock(request, ingredient_id):
+    #Отправка запроса на пополнение ингредиента
+    if not request.user.is_chef():
+        messages.error(request, 'Доступно только для поваров')
+        return redirect('menu')
+    
+    ingredient = get_object_or_404(Ingredient, id=ingredient_id)
+    
+    if request.method == 'POST':
+        quantity = request.POST.get('quantity')
+        notes = request.POST.get('notes', '')
+        
+        try:
+            quantity = Decimal(quantity)
+            if quantity <= 0:
+                messages.error(request, 'Количество должно быть положительным')
+                return redirect('chef_inventory')
+            
+            # Получаем текущий запас
+            stock = ingredient.stock
+            
+            # Записываем запрос в историю
+            StockHistory.objects.create(
+                ingredient=ingredient,
+                operation_type='request',
+                quantity_change=quantity,
+                quantity_before=stock.current_quantity,
+                quantity_after=stock.current_quantity,
+                performed_by=request.user,
+                notes=f"Запрос на пополнение: {notes}"
+            )
+            
+            messages.success(request, 
+                f'Запрос на пополнение {ingredient.name} ({quantity} {ingredient.unit}) отправлен администратору')
+            
+        except (ValueError, InvalidOperation):
+            messages.error(request, 'Некорректное количество')
+    
+    return redirect('chef_inventory')
+
+@login_required
+def chef_prepare_dishes(request):
+    #Страница приготовления блюд поваром
+    if not request.user.is_chef():
+        messages.error(request, 'Доступно только для поваров')
+        return redirect('menu')
+    
+    # Блюда которые можно приготовить
+    dishes_to_prepare = Dish.objects.filter(is_available=True)
+    
+    # Информация о готовых блюдах
+    prepared_dishes = PreparedDish.objects.all().select_related('dish')
+    
+    # Статистика
+    low_stock_count = IngredientStock.objects.filter(
+        current_quantity__lte=models.F('min_quantity')
+    ).count()
+    
+    out_of_stock_count = IngredientStock.objects.filter(
+        current_quantity__lte=0
+    ).count()
+    
+    if request.method == 'POST':
+        dish_id = request.POST.get('dish_id')
+        quantity = request.POST.get('quantity')
+        
+        if dish_id and quantity:
+            try:
+                dish = Dish.objects.get(id=dish_id)
+                quantity = int(quantity)
+                
+                if quantity <= 0:
+                    messages.error(request, 'Количество должно быть положительным')
+                    return redirect('chef_prepare_dishes')
+                
+                # Проверяем доступность ингредиентов
+                is_available, missing = dish.check_availability(quantity)
+                
+                if is_available:
+                    # Резервируем ингредиенты
+                    success, _ = dish.reserve_ingredients(quantity, request.user)
+                    if success:
+                        # Добавляем к готовым блюдам
+                        prepared_dish, created = PreparedDish.objects.get_or_create(
+                            dish=dish,
+                            defaults={'quantity': quantity, 'prepared_by': request.user}
+                        )
+                        if not created:
+                            prepared_dish.quantity += quantity
+                            prepared_dish.prepared_by = request.user
+                            prepared_dish.save()
+                        
+                        messages.success(request, f'Приготовлено {quantity} порций {dish.name}')
+                    else:
+                        messages.error(request, f'Ошибка при резервировании ингредиентов')
+                else:
+                    # Показываем каких ингредиентов не хватает
+                    missing_list = ", ".join([f"{m['ingredient'].name} (не хватает {m['missing']} {m['ingredient'].unit})" 
+                                             for m in missing])
+                    messages.error(request, 
+                        f'Не хватает ингредиентов для {dish.name}: {missing_list}')
+                    
+            except (ValueError, Dish.DoesNotExist):
+                messages.error(request, 'Ошибка в данных')
+    
+    context = {
+        'dishes_to_prepare': dishes_to_prepare,
+        'prepared_dishes': prepared_dishes,
+        'low_stock_count': low_stock_count,
+        'out_of_stock_count': out_of_stock_count,
+    }
+    return render(request, 'orders/chef_prepare_dishes.html', context)
+
+@login_required
+def update_dish_image(request, dish_id):
+    #Обновление только изображения блюда
+    if not (request.user.is_admin() or request.user.is_chef()):
+        messages.error(request, 'Только для администраторов и поваров')
+        return redirect('manage_dishes')
+
+    dish = get_object_or_404(Dish, id=dish_id)
+    
+    if request.method == 'POST':
+        if request.FILES.get('image'):
+            dish.image = request.FILES['image']
+            dish.save()
+            messages.success(request, f'Изображение для блюда "{dish.name}" обновлено!')
+        else:
+            messages.error(request, 'Файл изображения не выбран')
+    
+    return redirect('manage_dishes')
+
+@login_required
+def manage_inventory(request):
+    #Управление запасами (админ)
+    if not request.user.is_admin():
+        messages.error(request, 'Доступно только для администраторов')
+        return redirect('menu')
+    
+    stocks = IngredientStock.objects.all().select_related('ingredient').order_by('ingredient__name')
+    
+    # Запросы на пополнение (все активные запросы)
+    restock_requests = StockHistory.objects.filter(
+        operation_type='request'
+    ).select_related('ingredient', 'performed_by').order_by('-created_at')
+    
+    # Статистика затрат
+    total_ingredient_cost = StockHistory.objects.filter(
+        operation_type='restock'
+    ).aggregate(Sum('total_cost'))['total_cost__sum'] or Decimal('0')
+    
+    today = timezone.now().date()
+    today_ingredient_cost = StockHistory.objects.filter(
+        operation_type='restock',
+        created_at__date=today
+    ).aggregate(Sum('total_cost'))['total_cost__sum'] or Decimal('0')
+    
+    context = {
+        'stocks': stocks,
+        'restock_requests': restock_requests,
+        'total_ingredient_cost': total_ingredient_cost,
+        'today_ingredient_cost': today_ingredient_cost,
+    }
+    return render(request, 'orders/manage_inventory.html', context)
+
+@login_required
+def restock_ingredient(request, stock_id):
+    #Пополнение запасов ингредиента с учетом стоимости
+    if not request.user.is_admin():
+        messages.error(request, 'Доступно только для администраторов')
+        return redirect('menu')
+    
+    stock = get_object_or_404(IngredientStock, id=stock_id)
+    
+    if request.method == 'POST':
+        quantity = request.POST.get('quantity')
+        cost_per_unit = request.POST.get('cost_per_unit')
+        notes = request.POST.get('notes', '')
+        
+        try:
+            quantity = Decimal(quantity)
+            cost_per_unit = Decimal(cost_per_unit)
+            
+            if quantity > 0 and cost_per_unit >= 0:
+                # Обновляем запас
+                old_quantity = stock.current_quantity
+                stock.current_quantity += quantity
+                stock.last_restocked = timezone.now()
+                stock.save()
+                
+                # Обновляем или создаем стоимость ингредиента
+                ingredient_cost, created = IngredientCost.objects.get_or_create(
+                    ingredient=stock.ingredient,
+                    defaults={'cost_per_unit': cost_per_unit}
+                )
+                if not created:
+                    ingredient_cost.cost_per_unit = cost_per_unit
+                    ingredient_cost.save()
+                
+                # Рассчитываем общую стоимость
+                total_cost = quantity * cost_per_unit
+                
+                # Записываем в историю с учетом стоимости
+                StockHistory.objects.create(
+                    ingredient=stock.ingredient,
+                    operation_type='restock',
+                    quantity_change=quantity,
+                    quantity_before=old_quantity,
+                    quantity_after=stock.current_quantity,
+                    total_cost=total_cost,
+                    performed_by=request.user,
+                    notes=f"Пополнение: {notes}"
+                )
+                
+                messages.success(request,
+                                 f'Запас {stock.ingredient.name} пополнен на {quantity:.0f} {stock.unit}. '
+                                 f'Стоимость: {total_cost:.2f} руб. ({cost_per_unit:.2f} руб/{stock.unit})'.replace('.', ','))
+            else:
+                messages.error(request, 'Количество и стоимость должны быть положительными')
+        except (ValueError, InvalidOperation):
+            messages.error(request, 'Некорректные данные')
+    
+    return redirect('manage_inventory')
+
+@login_required
+def fulfill_restock_request(request, request_id):
+    #Выполнение запроса на пополнение от повара
+    if not request.user.is_admin():
+        messages.error(request, 'Доступно только для администраторов')
+        return redirect('menu')
+    
+    restock_request = get_object_or_404(StockHistory, id=request_id, operation_type='request')
+    
+    if request.method == 'POST':
+        cost_per_unit = request.POST.get('cost_per_unit')
+        notes = request.POST.get('notes', '')
+        
+        # Проверяем, что cost_per_unit не пустой
+        if not cost_per_unit:
+            messages.error(request, 'Необходимо указать стоимость за единицу')
+            return redirect('manage_inventory')
+        
+        try:
+            quantity = restock_request.quantity_change
+            cost_per_unit = Decimal(cost_per_unit)
+            
+            if cost_per_unit >= 0:
+                stock = restock_request.ingredient.stock
+                old_quantity = stock.current_quantity
+                stock.current_quantity += quantity
+                stock.last_restocked = timezone.now()
+                stock.save()
+                
+                # Обновляем стоимость
+                ingredient_cost, created = IngredientCost.objects.get_or_create(
+                    ingredient=stock.ingredient,
+                    defaults={'cost_per_unit': cost_per_unit}
+                )
+                if not created:
+                    ingredient_cost.cost_per_unit = cost_per_unit
+                    ingredient_cost.save()
+                
+                # Рассчитываем общую стоимость
+                total_cost = quantity * cost_per_unit
+                
+                # Обновляем запрос - отмечаем как выполненный
+                restock_request.total_cost = total_cost
+                restock_request.notes += f" | Выполнено: {notes}"
+                restock_request.save()
+                
+                # Создаем запись о пополнении
+                StockHistory.objects.create(
+                    ingredient=stock.ingredient,
+                    operation_type='restock',
+                    quantity_change=quantity,
+                    quantity_before=old_quantity,
+                    quantity_after=stock.current_quantity,
+                    total_cost=total_cost,
+                    performed_by=request.user,
+                    notes=f"Выполнение запроса #{request_id}: {notes}"
+                )
+                
+                messages.success(request,
+                                 f'Запрос на пополнение {stock.ingredient.name} выполнен. '
+                                 f'Затраты: {total_cost:.2f} руб. ({cost_per_unit:.2f} руб/{stock.unit})'.replace('.', ','))
+            else:
+                messages.error(request, 'Стоимость должна быть неотрицательной')
+        except (ValueError, InvalidOperation):
+            messages.error(request, 'Некорректная стоимость')
+        except Exception as e:
+            messages.error(request, f'Ошибка выполнения запроса: {str(e)}')
+    
+    return redirect('manage_inventory')
+@login_required
+def delete_restock_request(request, request_id):
+    #Удаление запроса на пополнение без выполнения
+    if not request.user.is_admin():
+        messages.error(request, 'Доступно только для администраторов')
+        return redirect('menu')
+    
+    restock_request = get_object_or_404(StockHistory, id=request_id, operation_type='request')
+    
+    try:
+        ingredient_name = restock_request.ingredient.name
+        restock_request.delete()
+        messages.success(request, f'Запрос на пополнение {ingredient_name} удален.')
+    except Exception as e:
+        messages.error(request, f'Ошибка удаления запроса: {str(e)}')
+    
+    return redirect('manage_inventory')
+
+@login_required
+def update_ingredient_cost(request, ingredient_id):
+    #Обновление стоимости ингредиента
+    if not request.user.is_admin():
+        messages.error(request, 'Доступно только для администраторов')
+        return redirect('menu')
+    
+    ingredient = get_object_or_404(Ingredient, id=ingredient_id)
+    
+    if request.method == 'POST':
+        cost_per_unit = request.POST.get('cost_per_unit')
+        notes = request.POST.get('notes', '')
+        
+        try:
+            cost_per_unit = Decimal(cost_per_unit)
+            
+            if cost_per_unit >= 0:
+                # Обновляем или создаем стоимость
+                ingredient_cost, created = IngredientCost.objects.update_or_create(
+                    ingredient=ingredient,
+                    defaults={
+                        'cost_per_unit': cost_per_unit,
+                        'last_updated': timezone.now()
+                    }
+                )
+                
+                # Записываем в историю
+                StockHistory.objects.create(
+                    ingredient=ingredient,
+                    operation_type='adjustment',
+                    quantity_change=0,
+                    quantity_before=ingredient.stock.current_quantity,
+                    quantity_after=ingredient.stock.current_quantity,
+                    total_cost=0,
+                    performed_by=request.user,
+                    notes=f"Изменение стоимости: {cost_per_unit} руб/{ingredient.unit}. {notes}"
+                )
+                
+                messages.success(request, 
+                    f'Стоимость {ingredient.name} обновлена: {cost_per_unit} руб/{ingredient.unit}')
+            else:
+                messages.error(request, 'Стоимость должна быть неотрицательной')
+        except (ValueError, InvalidOperation):
+            messages.error(request, 'Некорректная стоимость')
+    
+    return redirect('manage_inventory')
+
+@login_required
+def adjust_stock(request, stock_id):
+    #Корректировка запасов ингредиента - ОСТАВЛЯЕМ БОЛЕЕ ПОЛНУЮ ВЕРСИЮ
+    if not request.user.is_admin():
+        messages.error(request, 'Доступно только для администраторов')
+        return redirect('menu')
+    
+    stock = get_object_or_404(IngredientStock, id=stock_id)
+    
+    if request.method == 'POST':
+        new_quantity = request.POST.get('new_quantity')
+        notes = request.POST.get('notes', '')
+        
+        try:
+            new_quantity = Decimal(new_quantity)
+            if new_quantity >= 0:
+                # Записываем изменение
+                old_quantity = stock.current_quantity
+                change = new_quantity - old_quantity
+                
+                stock.current_quantity = new_quantity
+                stock.save()
+                
+                # Записываем в историю
+                StockHistory.objects.create(
+                    ingredient=stock.ingredient,
+                    operation_type='adjustment',
+                    quantity_change=change,
+                    quantity_before=old_quantity,
+                    quantity_after=new_quantity,
+                    performed_by=request.user,
+                    notes=notes
+                )
+                
+                messages.success(request, 
+                    f'Запас {stock.ingredient.name} скорректирован: {old_quantity} → {new_quantity} {stock.unit}')
+            else:
+                messages.error(request, 'Количество не может быть отрицательным')
+        except (ValueError, InvalidOperation):
+            messages.error(request, 'Некорректное количество')
+    
+    return redirect('manage_inventory')
+@login_required
+def add_allergen(request):
+    #Быстрое добавление аллергена со главной страницы
+    if not request.user.is_student():
+        messages.error(request, 'Только для учеников')
+        return redirect('home')
+    
+    if request.method == 'POST':
+        allergen_id = request.POST.get('allergen_id')
+        if allergen_id:
+            try:
+                allergen = Ingredient.objects.get(id=allergen_id)
+                if allergen not in request.user.allergens.all():
+                    request.user.allergens.add(allergen)
+                    messages.success(request, f'Аллерген "{allergen.name}" добавлен')
+                else:
+                    messages.warning(request, 'Этот аллерген уже добавлен')
+            except Ingredient.DoesNotExist:
+                messages.error(request, 'Аллерген не найден')
+    
+    return redirect('home')
+
+@login_required
+def remove_allergen(request, allergen_id):
+    #Удаление аллергена со главной страницы
+    if not request.user.is_student():
+        messages.error(request, 'Только для учеников')
+        return redirect('home')
+    
+    allergen = get_object_or_404(Ingredient, id=allergen_id)
+    if allergen in request.user.allergens.all():
+        request.user.allergens.remove(allergen)
+        messages.success(request, f'Аллерген "{allergen.name}" удален')
+    
+    return redirect('home')

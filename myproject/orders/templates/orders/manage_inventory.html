@@ -1,0 +1,306 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Управление запасами - Администратор{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-12">
+            <h2>📦 Управление запасами ингредиентов</h2>
+            
+            <!-- Запросы на пополнение -->
+            {% if restock_requests %}
+            <div class="card mb-4 border-warning">
+                <div class="card-header bg-warning text-white">
+                    <h5 class="mb-0">⚠️ Запросы на пополнение от поваров</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Дата</th>
+                                    <th>Ингредиент</th>
+                                    <th>Количество</th>
+                                    <th>Кто запросил</th>
+                                    <th>Примечание</th>
+                                    <th>Действие</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for request in restock_requests %}
+                                <tr>
+                                    <td>{{ request.created_at|date:"d.m.Y H:i" }}</td>
+                                    <td>
+                                        <strong>{{ request.ingredient.name }}</strong>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-info">+{{ request.quantity_change }} {{ request.ingredient.unit }}</span>
+                                    </td>
+                                    <td>{{ request.performed_by.get_full_name|default:request.performed_by.username }}</td>
+                                    <td>
+                                        <small class="text-muted">{{ request.notes|truncatechars:50 }}</small>
+                                    </td>
+                                    <td>
+                                        <button type="button" class="btn btn-sm btn-success" 
+                                                data-bs-toggle="modal" data-bs-target="#fulfillModal{{ request.id }}">
+                                            ✅ Выполнить
+                                        </button>
+                                        <form method="post" action="{% url 'delete_restock_request' request.id %}" class="d-inline">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-sm btn-danger" 
+                                                    onclick="return confirm('Удалить этот запрос?')">
+                                                ❌ Удалить
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+
+                                <!-- Модальное окно для выполнения запроса -->
+                                <div class="modal fade" id="fulfillModal{{ request.id }}" tabindex="-1" aria-hidden="true">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title">Выполнение запроса на пополнение</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                                            </div>
+                                            <form method="post" action="{% url 'fulfill_restock_request' request.id %}">
+                                                {% csrf_token %}
+                                                <div class="modal-body">
+                                                    <div class="alert alert-info">
+                                                        <i class="fas fa-info-circle"></i>
+                                                        Для выполнения запроса укажите стоимость закупки
+                                                    </div>
+                                                    <div class="form-group mb-3">
+                                                        <label class="form-label">Ингредиент:</label>
+                                                        <input type="text" class="form-control" 
+                                                               value="{{ request.ingredient.name }}" readonly>
+                                                    </div>
+                                                    <div class="form-group mb-3">
+                                                        <label class="form-label">Количество:</label>
+                                                        <input type="text" class="form-control" 
+                                                               value="+{{ request.quantity_change }} {{ request.ingredient.unit }}" readonly>
+                                                    </div>
+                                                    <div class="form-group mb-3">
+                                                        <label class="form-label">Текущий запас:</label>
+                                                        <input type="text" class="form-control" 
+                                                               value="{{ request.ingredient.stock.current_quantity }} {{ request.ingredient.unit }}" readonly>
+                                                    </div>
+                                                    <div class="form-group mb-3">
+                                                        <label class="form-label">Стоимость за единицу (руб/{{ request.ingredient.unit }}):</label>
+                                                        <input type="number" name="cost_per_unit" class="form-control" 
+                                                               step="0.01" min="0" required
+                                                               placeholder="Например: 150.50">
+                                                    </div>
+                                                    <div class="form-group mb-3">
+                                                        <label class="form-label">Примечание к выполнению:</label>
+                                                        <textarea name="notes" class="form-control" rows="3" 
+                                                                  placeholder="Например: Закупка у поставщика, дата поставки и т.д."></textarea>
+                                                    </div>
+                                                    <div class="alert alert-warning">
+                                                        <i class="fas fa-exclamation-triangle"></i>
+                                                        После выполнения запрос будет удален из списка
+                                                    </div>
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                                                    <button type="submit" class="btn btn-success">Выполнить запрос</button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" class="text-center">Нет активных запросов на пополнение</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Управление запасами -->
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Текущие запасы ингредиентов</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Ингредиент</th>
+                                    <th>Текущее количество</th>
+                                    <th>Минимальный</th>
+                                    <th>Единица</th>
+                                    <th>Статус</th>
+                                    <th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for stock in stocks %}
+                                <tr class="{% if stock.is_out_of_stock %}table-danger{% elif stock.is_low %}table-warning{% endif %}">
+                                    <td>
+                                        <strong>{{ stock.ingredient.name }}</strong>
+                                    </td>
+                                    <td>
+                                        <span class="font-weight-bold {% if stock.is_out_of_stock %}text-danger{% elif stock.is_low %}text-warning{% endif %}">
+                                            {{ stock.current_quantity }}
+                                        </span>
+                                    </td>
+                                    <td>{{ stock.min_quantity }}</td>
+                                    <td>{{ stock.unit }}</td>
+                                    <td>
+                                        {% if stock.is_out_of_stock %}
+                                            <span class="badge bg-danger">Закончился</span>
+                                        {% elif stock.is_low %}
+                                            <span class="badge bg-warning">Мало</span>
+                                        {% else %}
+                                            <span class="badge bg-success">Норма</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <button type="button" class="btn btn-primary" 
+                                                    data-bs-toggle="modal" data-bs-target="#restockModal{{ stock.id }}">
+                                                ➕ Пополнить
+                                            </button>
+                                            <button type="button" class="btn btn-info" 
+                                                    data-bs-toggle="modal" data-bs-target="#adjustModal{{ stock.id }}">
+                                                📝 Изменить
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+
+                                <!-- Модальное окно для пополнения -->
+                                <div class="modal fade" id="restockModal{{ stock.id }}" tabindex="-1" aria-hidden="true">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title">Пополнение запаса</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                                            </div>
+                                            <form method="post" action="{% url 'restock_ingredient' stock.id %}">
+                                                {% csrf_token %}
+                                                <div class="modal-body">
+                                                    <div class="form-group mb-3">
+                                                        <label class="form-label">Ингредиент:</label>
+                                                        <input type="text" class="form-control" 
+                                                               value="{{ stock.ingredient.name }}" readonly>
+                                                    </div>
+                                                    <div class="form-group mb-3">
+                                                        <label class="form-label">Текущее количество:</label>
+                                                        <input type="text" class="form-control" 
+                                                               value="{{ stock.current_quantity }} {{ stock.unit }}" readonly>
+                                                    </div>
+                                                    <div class="form-group mb-3">
+                                                        <label class="form-label">Количество для пополнения ({{ stock.unit }}):</label>
+                                                        <input type="number" name="quantity" class="form-control" 
+                                                               min="0.01" step="0.01" required
+                                                               placeholder="Например: 5.00">
+                                                    </div>
+                                                    <div class="form-group mb-3">
+                                                        <label class="form-label">Стоимость за единицу (руб/{{ stock.unit }}):</label>
+                                                        <input type="number" name="cost_per_unit" class="form-control" 
+                                                               step="0.01" min="0" required
+                                                               placeholder="Например: 150.50">
+                                                    </div>
+                                                    <div class="form-group mb-3">
+                                                        <label class="form-label">Примечание:</label>
+                                                        <textarea name="notes" class="form-control" rows="3" 
+                                                                  placeholder="Например: Закупка у поставщика 'Продукты+'"></textarea>
+                                                    </div>
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                                                    <button type="submit" class="btn btn-primary">Пополнить</button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Модальное окно для корректировки -->
+                                <div class="modal fade" id="adjustModal{{ stock.id }}" tabindex="-1" aria-hidden="true">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title">Изменение запаса</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                                            </div>
+                                            <form method="post" action="{% url 'adjust_stock' stock.id %}">
+                                                {% csrf_token %}
+                                                <div class="modal-body">
+                                                    <div class="alert alert-warning">
+                                                        <i class="fas fa-exclamation-triangle"></i>
+                                                        Используйте для корректировки при инвентаризации.
+                                                    </div>
+                                                    <div class="form-group mb-3">
+                                                        <label class="form-label">Ингредиент:</label>
+                                                        <input type="text" class="form-control" 
+                                                               value="{{ stock.ingredient.name }}" readonly>
+                                                    </div>
+                                                    <div class="form-group mb-3">
+                                                        <label class="form-label">Текущее количество:</label>
+                                                        <input type="text" class="form-control" 
+                                                               value="{{ stock.current_quantity }} {{ stock.unit }}" readonly>
+                                                    </div>
+                                                    <div class="form-group mb-3">
+                                                        <label class="form-label">Новое количество ({{ stock.unit }}):</label>
+                                                        <input type="number" name="new_quantity" class="form-control" 
+                                                               value="{{ stock.current_quantity }}" min="0" step="0.01" required>
+                                                    </div>
+                                                    <div class="form-group mb-3">
+                                                        <label class="form-label">Причина изменения:</label>
+                                                        <textarea name="notes" class="form-control" rows="3" 
+                                                                  placeholder="Например: Инвентаризация, списание брака и т.д." required></textarea>
+                                                    </div>
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                                                    <button type="submit" class="btn btn-primary">Сохранить</button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" class="text-center py-4">
+                                        <div class="alert alert-info">
+                                            <i class="fas fa-info-circle"></i> Нет данных о запасах
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Автоподтверждение при выполнении запросов
+    document.addEventListener('DOMContentLoaded', function() {
+        // Автозаполнение рекомендованного количества для пополнения
+        const restockModals = document.querySelectorAll('[id^="restockModal"]');
+        restockModals.forEach(modal => {
+            const quantityInput = modal.querySelector('input[name="quantity"]');
+            if (quantityInput) {
+                // Рекомендуем пополнять до 2x минимального запаса
+                const currentQty = parseFloat(modal.querySelector('input[readonly]').value.split(' ')[0]) || 0;
+                const recommended = Math.max(10, 20 - currentQty); // Примерная логика
+                quantityInput.value = recommended.toFixed(2);
+            }
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,196 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Запасы ингредиентов - Повар{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-12">
+            <h2>📦 Запасы ингредиентов</h2>
+            
+            <!-- Статистика -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card bg-primary text-white">
+                        <div class="card-body text-center py-3">
+                            <h5>Всего ингредиентов</h5>
+                            <h3>{{ total_stocks }}</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-warning text-white">
+                        <div class="card-body text-center py-3">
+                            <h5>Мало осталось</h5>
+                            <h3>{{ low_stock_count }}</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-danger text-white">
+                        <div class="card-body text-center py-3">
+                            <h5>Закончились</h5>
+                            <h3>{{ out_of_stock_count }}</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <a href="{% url 'chef_prepare_dishes' %}" class="btn btn-success btn-block h-100 d-flex flex-column justify-content-center">
+                        <i class="fas fa-utensils fa-2x mb-2"></i>
+                        <span>Приготовить блюда</span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Таблица запасов -->
+            <div class="card">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Ингредиент</th>
+                                    <th>Текущее количество</th>
+                                    <th>Минимальный запас</th>
+                                    <th>Единица</th>
+                                    <th>Статус</th>
+                                    <th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for stock in stocks %}
+                                <tr class="{% if stock.is_out_of_stock %}table-danger{% elif stock.is_low %}table-warning{% endif %}">
+                                    <td>
+                                        <strong>{{ stock.ingredient.name }}</strong>
+                                        {% if stock.ingredient.stock_history.exists %}
+                                        <br>
+                                        <small class="text-muted">
+                                            Последнее пополнение: {{ stock.last_restocked|date:"d.m.Y" }}
+                                        </small>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="font-weight-bold {% if stock.is_out_of_stock %}text-danger{% elif stock.is_low %}text-warning{% endif %}">
+                                            {{ stock.current_quantity }}
+                                        </span>
+                                    </td>
+                                    <td>{{ stock.min_quantity }}</td>
+                                    <td>{{ stock.unit }}</td>
+                                    <td>
+                                        {% if stock.is_out_of_stock %}
+                                            <span class="badge bg-danger">Закончился</span>
+                                            <br><small class="text-danger">Срочно нужно пополнить!</small>
+                                        {% elif stock.is_low %}
+                                            <span class="badge bg-warning">Мало</span>
+                                            <br><small class="text-warning">Осталось: {{ stock.current_quantity|floatformat:1 }}</small>
+                                        {% else %}
+                                            <span class="badge bg-success">Достаточно</span>
+                                            <br><small class="text-muted">Осталось: {{ stock.current_quantity|floatformat:1 }}</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <button type="button" class="btn btn-sm btn-info" 
+                                                data-bs-toggle="modal" data-bs-target="#requestModal{{ stock.id }}">
+                                            <i class="fas fa-envelope"></i> Запросить
+                                        </button>
+                                    </td>
+                                </tr>
+
+                                <!-- Модальное окно для запроса -->
+                                <div class="modal fade" id="requestModal{{ stock.id }}" tabindex="-1" aria-hidden="true">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title">Запрос на пополнение</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                                            </div>
+                                            <form method="post" action="{% url 'request_restock' stock.ingredient.id %}">
+                                                {% csrf_token %}
+                                                <div class="modal-body">
+                                                    <div class="alert alert-info">
+                                                        <i class="fas fa-info-circle"></i>
+                                                        Запрос будет отправлен администратору для пополнения запасов.
+                                                    </div>
+                                                    <div class="form-group mb-3">
+                                                        <label class="form-label">Ингредиент:</label>
+                                                        <input type="text" class="form-control" 
+                                                               value="{{ stock.ingredient.name }}" readonly>
+                                                    </div>
+                                                    <div class="form-group mb-3">
+                                                        <label class="form-label">Текущее количество:</label>
+                                                        <input type="text" class="form-control" 
+                                                               value="{{ stock.current_quantity }} {{ stock.unit }}" readonly>
+                                                    </div>
+                                                    <div class="form-group mb-3">
+                                                        <label class="form-label">Минимальный запас:</label>
+                                                        <input type="text" class="form-control" 
+                                                               value="{{ stock.min_quantity }} {{ stock.unit }}" readonly>
+                                                    </div>
+                                                    <div class="form-group mb-3">
+                                                        <label class="form-label">Количество для заказа ({{ stock.unit }}):</label>
+                                                        <input type="number" name="quantity" class="form-control" 
+                                                               min="1" step="0.01" required 
+                                                               placeholder="Рекомендуется: {{ stock.min_quantity|add:10 }}">
+                                                    </div>
+                                                    <div class="form-group mb-3">
+                                                        <label class="form-label">Примечание:</label>
+                                                        <textarea name="notes" class="form-control" rows="3" 
+                                                                  placeholder="Например: нужен срочно, для приготовления популярных блюд и т.д."></textarea>
+                                                    </div>
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                                                    <button type="submit" class="btn btn-primary">
+                                                        <i class="fas fa-paper-plane"></i> Отправить запрос
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" class="text-center py-4">
+                                        <div class="alert alert-warning">
+                                            <i class="fas fa-exclamation-triangle"></i>
+                                            Нет данных о запасах ингредиентов.
+                                            <br>
+                                            <small class="text-muted">
+                                                Возможно, ингредиенты еще не добавлены в систему.
+                                            </small>
+                                        </div>
+                                        <a href="{% url 'manage_dishes' %}" class="btn btn-outline-primary mt-2">
+                                            <i class="fas fa-plus"></i> Добавить ингредиенты
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- JavaScript для предзаполнения формы -->
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Предзаполняем поле количества рекомендуемым значением
+        const modals = document.querySelectorAll('.modal');
+        modals.forEach(modal => {
+            const quantityInput = modal.querySelector('input[name="quantity"]');
+            if (quantityInput && quantityInput.placeholder.includes('Рекомендуется:')) {
+                const recommended = quantityInput.placeholder.match(/(\d+\.?\d*)/);
+                if (recommended) {
+                    quantityInput.value = recommended[0];
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,232 @@
+{% extends 'base.html' %}
+
+{% block title %}Управление заказами - Администратор{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-12">
+            <h2>📋 Управление заказами</h2>
+
+            <!-- Статистика -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card bg-primary text-white">
+                        <div class="card-body text-center py-3">
+                            <h5>Всего заказов</h5>
+                            <h3>{{ total_orders }}</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-warning text-white">
+                        <div class="card-body text-center py-3">
+                            <h5>В процессе</h5>
+                            <h3>{{ active_orders }}</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-success text-white">
+                        <div class="card-body text-center py-3">
+                            <h5>Завершено</h5>
+                            <h3>{{ completed_orders }}</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-danger text-white">
+                        <div class="card-body text-center py-3">
+                            <h5>Отменено</h5>
+                            <h3>{{ cancelled_orders }}</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Таблица заказов -->
+            <div class="card">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Ученик</th>
+                                    <th>Статус</th>
+                                    <th>Сумма</th>
+                                    <th>Дата</th>
+                                    <th>Блюда</th>
+                                    <th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for order in orders %}
+                                <tr class="{% if order.status == 'cancelled' %}table-danger{% elif order.status == 'ready' %}table-success{% elif order.status == 'preparing' %}table-warning{% endif %}">
+                                    <td>
+                                        <strong>#{{ order.id }}</strong>
+                                    </td>
+                                    <td>
+                                        {{ order.customer.get_full_name|default:order.customer.username }}
+                                        <br>
+                                        <small class="text-muted">{{ order.customer.email|default:"Без email" }}</small>
+                                    </td>
+                                    <td>
+                                        <span class="badge 
+                                            {% if order.status == 'pending' %}bg-secondary
+                                            {% elif order.status == 'preparing' %}bg-warning
+                                            {% elif order.status == 'ready' %}bg-success
+                                            {% elif order.status == 'picked_up' %}bg-info
+                                            {% elif order.status == 'delivered' %}bg-primary
+                                            {% elif order.status == 'cancelled' %}bg-danger
+                                            {% else %}bg-secondary{% endif %}">
+                                            {{ order.get_status_display }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <strong>{{ order.total_price }} ₽</strong>
+                                    </td>
+                                    <td>
+                                        {{ order.created_at|date:"d.m.Y H:i" }}
+                                        <br>
+                                        <small class="text-muted">{{ order.created_at|timesince }} назад</small>
+                                    </td>
+                                    <td>
+                                        <small>
+                                            {% for item in order.items.all|slice:":2" %}
+                                                {{ item.dish.name }} x{{ item.quantity }}<br>
+                                            {% endfor %}
+                                            {% if order.items.count > 2 %}
+                                                <em>и еще {{ order.items.count|add:"-2" }}...</em>
+                                            {% endif %}
+                                        </small>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <a href="{% url 'order_detail' order.id %}" 
+                                               class="btn btn-info" title="Просмотр">
+                                                <i class="fas fa-eye"></i>
+                                            </a>
+                                            <button type="button" class="btn btn-primary" 
+                                                    data-bs-toggle="modal" data-bs-target="#statusModal{{ order.id }}"
+                                                    title="Изменить статус">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            {% if order.status == 'pending' %}
+                                            <form method="post" action="{% url 'mark_paid' order.id %}" 
+                                                  class="d-inline" onsubmit="return confirm('Отметить заказ как оплаченный?')">
+                                                {% csrf_token %}
+                                                <button type="submit" class="btn btn-success" title="Отметить оплаченным">
+                                                    <i class="fas fa-check"></i>
+                                                </button>
+                                            </form>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+
+                                <!-- Модальное окно для изменения статуса -->
+                                <div class="modal fade" id="statusModal{{ order.id }}" tabindex="-1" aria-hidden="true">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title">Изменение статуса заказа #{{ order.id }}</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                                            </div>
+                                            <form method="post" action="{% url 'update_order_status' order.id %}">
+                                                {% csrf_token %}
+                                                <div class="modal-body">
+                                                    <div class="form-group mb-3">
+                                                        <label class="form-label">Текущий статус:</label>
+                                                        <input type="text" class="form-control" 
+                                                               value="{{ order.get_status_display }}" readonly>
+                                                    </div>
+                                                    <div class="form-group mb-3">
+                                                        <label class="form-label">Новый статус:</label>
+                                                        <select name="status" class="form-select" required>
+                                                            {% for status_code, status_name in status_choices %}
+                                                            <option value="{{ status_code }}" 
+                                                                    {% if order.status == status_code %}selected{% endif %}>
+                                                                {{ status_name }}
+                                                            </option>
+                                                            {% endfor %}
+                                                        </select>
+                                                    </div>
+                                                    <div class="form-group mb-3">
+                                                        <label class="form-label">Примечание (необязательно):</label>
+                                                        <textarea name="notes" class="form-control" rows="3" 
+                                                                  placeholder="Причина изменения статуса..."></textarea>
+                                                    </div>
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                                                    <button type="submit" class="btn btn-primary">Сохранить</button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="7" class="text-center">Заказы не найдены</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Пагинация -->
+                    {% if orders.has_other_pages %}
+                    <nav aria-label="Навигация по страницам" class="mt-4">
+                        <ul class="pagination justify-content-center">
+                            {% if orders.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ orders.previous_page_number }}">
+                                    &laquo;
+                                </a>
+                            </li>
+                            {% else %}
+                            <li class="page-item disabled">
+                                <span class="page-link">&laquo;</span>
+                            </li>
+                            {% endif %}
+                            
+                            {% for i in orders.paginator.page_range %}
+                                {% if orders.number == i %}
+                                <li class="page-item active">
+                                    <span class="page-link">{{ i }}</span>
+                                </li>
+                                {% elif i > orders.number|add:'-3' and i < orders.number|add:'3' %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ i }}">{{ i }}</a>
+                                </li>
+                                {% endif %}
+                            {% endfor %}
+                            
+                            {% if orders.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ orders.next_page_number }}">
+                                    &raquo;
+                                </a>
+                            </li>
+                            {% else %}
+                            <li class="page-item disabled">
+                                <span class="page-link">&raquo;</span>
+                            </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Подтверждение действий
+    function confirmAction(message) {
+        return confirm(message || "Вы уверены?");
+    }
+</script>
+{% endblock %}

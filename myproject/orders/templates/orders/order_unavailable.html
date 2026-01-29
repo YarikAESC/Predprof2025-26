@@ -1,0 +1,196 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Блюда недоступны{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <div class="card border-danger">
+                <div class="card-header bg-danger text-white">
+                    <h4 class="mb-0">⚠️ Некоторые блюда недоступны</h4>
+                </div>
+                <div class="card-body">
+                    <p class="lead">Извините, но следующие блюда временно недоступны из-за недостатка ингредиентов:</p>
+                    
+                    <div class="list-group mb-4">
+                        {% for item in unavailable_items %}
+                        <div class="list-group-item list-group-item-danger">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h5 class="mb-1">{{ item.dish.name }}</h5>
+                                    <p class="mb-1">Количество: {{ item.quantity }}</p>
+                                    <small class="text-muted">
+                                        Не хватает:
+                                        {% for missing in item.missing %}
+                                            {{ missing.ingredient.name }} ({{ missing.missing }} {{ missing.ingredient.unit }}),
+                                        {% endfor %}
+                                    </small>
+                                </div>
+                                <span class="badge badge-danger">Недоступно</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="alert alert-info">
+                        <h5>Что делать?</h5>
+                        <ul class="mb-0">
+                            <li>Удалите недоступные блюда из корзины</li>
+                            <li>Выберите другие доступные блюда</li>
+                            <li>Повара уже уведомлены о недостающих ингредиентах</li>
+                            <li>Попробуйте оформить заказ позже</li>
+                        </ul>
+                    </div>
+
+                    <div class="text-center">
+                        <a href="{% url 'view_cart' %}" class="btn btn-primary btn-lg">
+                            ← Вернуться в корзину
+                        </a>
+                        <a href="{% url 'menu' %}" class="btn btn-secondary btn-lg ml-2">
+                            Вернуться в меню
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+6. Обновить cart.html для отображения доступности
+html
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Корзина{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-8">
+            <h2>🛒 Ваша корзина</h2>
+            
+            {% if not cart_items %}
+            <div class="alert alert-info">
+                Ваша корзина пуста. <a href="{% url 'menu' %}">Перейти в меню</a>
+            </div>
+            {% else %}
+                {% if not all_available %}
+                <div class="alert alert-warning">
+                    ⚠️ Некоторые блюда временно недоступны. Вы не сможете оформить заказ, пока они есть в корзине.
+                </div>
+                {% endif %}
+                
+                {% for item in cart_items %}
+                <div class="card mb-3 {% if not item.is_available %}border-danger{% endif %}">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-2">
+                                {% if item.dish.image %}
+                                    <img src="{{ item.dish.image.url }}" class="img-fluid rounded" alt="{{ item.dish.name }}">
+                                {% else %}
+                                    <div class="bg-light rounded d-flex align-items-center justify-content-center" style="height: 100px; width: 100px;">
+                                        <span class="text-muted">Нет фото</span>
+                                    </div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6">
+                                <h5 class="card-title">{{ item.dish.name }}</h5>
+                                <p class="card-text text-muted">{{ item.dish.description|truncatechars:100 }}</p>
+                                <p class="card-text">
+                                    <small class="text-muted">{{ item.dish.category.name }}</small>
+                                </p>
+                                
+                                {% if not item.is_available %}
+                                <div class="alert alert-danger py-2 my-2">
+                                    <small>
+                                        <strong>⚠️ Временно недоступно:</strong><br>
+                                        {% for missing in item.missing_ingredients %}
+                                        • {{ missing.ingredient.name }} (не хватает {{ missing.missing }} {{ missing.ingredient.unit }})<br>
+                                        {% endfor %}
+                                    </small>
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-4">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <div class="input-group input-group-sm" style="width: 120px;">
+                                        <form method="post" action="{% url 'update_cart' item.dish.id %}" class="d-flex">
+                                            {% csrf_token %}
+                                            <input type="number" name="quantity" value="{{ item.quantity }}" 
+                                                   min="1" max="10" class="form-control">
+                                            <div class="input-group-append">
+                                                <button type="submit" class="btn btn-outline-primary">✓</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                    <h5 class="mb-0">{{ item.total }} ₽</h5>
+                                </div>
+                                <p class="text-muted mb-1">{{ item.dish.price }} ₽ за порцию</p>
+                                <form method="post" action="{% url 'remove_from_cart' item.dish.id %}">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-danger btn-sm">Удалить</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% endif %}
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Итого</h5>
+                    <hr>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Всего товаров:</span>
+                        <span>{{ cart_items|length }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-3">
+                        <span><strong>Сумма:</strong></span>
+                        <span><strong>{{ total }} ₽</strong></span>
+                    </div>
+                    
+                    {% if cart_items and all_available %}
+                    <a href="{% url 'create_order' %}" class="btn btn-success btn-lg btn-block">
+                        🛍️ Оформить заказ
+                    </a>
+                    {% elif cart_items %}
+                    <button class="btn btn-secondary btn-lg btn-block" disabled>
+                        ⚠️ Не все блюда доступны
+                    </button>
+                    <div class="alert alert-warning mt-2">
+                        Удалите недоступные блюда, чтобы оформить заказ
+                    </div>
+                    {% endif %}
+                    
+                    <a href="{% url 'menu' %}" class="btn btn-outline-primary btn-block mt-2">
+                        ← Продолжить покупки
+                    </a>
+                    
+                    {% if cart_items|length > 1 %}
+                    <a href="{% url 'create_combo_set' %}" class="btn btn-info btn-block mt-2">
+                        🎁 Создать комбо-набор
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+            
+            {% if not all_available %}
+            <div class="card mt-3 border-warning">
+                <div class="card-body">
+                    <h6 class="card-title text-warning">⚠️ Проблемы с доступностью</h6>
+                    <p class="card-text small">
+                        Некоторые блюда временно недоступны из-за недостатка ингредиентов. 
+                        Повара уже уведомлены и скоро пополнят запасы.
+                    </p>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

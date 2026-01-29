@@ -1,0 +1,98 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Корзина{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-8">
+            <h2>🛒 Ваша корзина</h2>
+            
+            {% if not cart_items %}
+            <div class="alert alert-info">
+                Ваша корзина пуста. <a href="{% url 'menu' %}">Перейти в меню</a>
+            </div>
+            {% else %}
+                {% for item in cart_items %}
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-2">
+                                {% if item.dish.image %}
+                                    <img src="{{ item.dish.image.url }}" class="img-fluid rounded" alt="{{ item.dish.name }}">
+                                {% else %}
+                                    <div class="bg-light rounded d-flex align-items-center justify-content-center" style="height: 100px; width: 100px;">
+                                        <span class="text-muted">Нет фото</span>
+                                    </div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6">
+                                <h5 class="card-title">{{ item.dish.name }}</h5>
+                                <p class="card-text text-muted">{{ item.dish.description|truncatechars:100 }}</p>
+                                <p class="card-text">
+                                    <small class="text-muted">{{ item.dish.category.name }}</small>
+                                </p>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <div class="input-group input-group-sm" style="width: 120px;">
+                                        <form method="post" action="{% url 'update_cart' item.dish.id %}" class="d-flex">
+                                            {% csrf_token %}
+                                            <input type="number" name="quantity" value="{{ item.quantity }}" 
+                                                   min="1" max="10" class="form-control">
+                                            <div class="input-group-append">
+                                                <button type="submit" class="btn btn-outline-primary">✓</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                    <h5 class="mb-0">{{ item.total }} ₽</h5>
+                                </div>
+                                <p class="text-muted mb-1">{{ item.dish.price }} ₽ за порцию</p>
+                                <form method="post" action="{% url 'remove_from_cart' item.dish.id %}">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-danger btn-sm">Удалить</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% endif %}
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Итого</h5>
+                    <hr>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Всего товаров:</span>
+                        <span>{{ cart_items|length }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-3">
+                        <span><strong>Сумма:</strong></span>
+                        <span><strong>{{ total }} ₽</strong></span>
+                    </div>
+                    
+                    {% if cart_items %}
+                    <a href="{% url 'create_order' %}" class="btn btn-success btn-lg btn-block">
+                         Оформить заказ
+                    </a>
+                    {% endif %}
+                    
+                    <a href="{% url 'menu' %}" class="btn btn-outline-primary btn-block mt-2">
+                        ← Продолжить покупки
+                    </a>
+                    
+                    {% if cart_items|length > 1 %}
+                    <a href="{% url 'create_combo_set' %}" class="btn btn-info btn-block mt-2">
+                         Создать комбо-набор
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

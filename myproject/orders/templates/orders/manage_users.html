@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container">
+    <!-- Заголовок страницы управления пользователями -->
+    <h1 class="mb-4">Управление пользователями</h1>
+    
+    <!-- Блок для отображения системных сообщений -->
+    {% if messages %}
+    <div class="messages mb-3">
+        {% for message in messages %}
+        <!-- Сообщения об успехе, ошибках и т.д. -->
+        <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    
+    <!-- Основная таблица пользователей -->
+    <div class="table-responsive">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Логин</th>
+                    <th>Имя</th>
+                    <th>Фамилия</th>
+                    <th>Email</th>
+                    <th>Роль</th>
+                    <th>Дата регистрации</th>
+                    <th>Изменить роль</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Цикл по всем пользователям системы -->
+                {% for user in users %}
+                <tr>
+                    <!-- Логин пользователя -->
+                    <td>{{ user.username }}</td>
+                    <!-- Имя пользователя -->
+                    <td>{{ user.first_name|default:"—" }}</td>
+                    <!-- Фамилия пользователя -->
+                    <td>{{ user.last_name|default:"—" }}</td>
+                    <!-- Email пользователя -->
+                    <td>{{ user.email|default:"—" }}</td>
+                    <!-- Роль пользователя с цветным бейджем -->
+                    <td>
+                        <span class="badge 
+                            {% if user.role == 'admin' %}bg-danger
+                            {% elif user.role == 'chef' %}bg-warning
+                            {% else %}bg-success{% endif %}">
+                            {{ user.get_role_display }}
+                        </span>
+                    </td>
+                    <!-- Дата регистрации пользователя -->
+                    <td>{{ user.date_joined|date:"d.m.Y" }}</td>
+                    <!-- Форма для изменения роли пользователя -->
+                    <td>
+                        <!-- Не показываем форму для текущего пользователя -->
+                        {% if user.id != request.user.id %}
+                        <form method="post" action="{% url 'change_user_role' user.id %}" class="d-inline">
+                            {% csrf_token %}
+                            <!-- Выпадающий список для выбора роли -->
+                            <div class="input-group input-group-sm">
+                                <select name="role" class="form-control form-control-sm" style="width: auto;">
+                                    <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Администратор</option>
+                                    <option value="chef" {% if user.role == 'chef' %}selected{% endif %}>Повар</option>
+                                    <option value="student" {% if user.role == 'student' %}selected{% endif %}>Ученик</option>
+                                </select>
+                                <!-- Кнопка сохранения изменений -->
+                                <button type="submit" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-save"></i>
+                                </button>
+                            </div>
+                        </form>
+                        {% else %}
+                        <!-- Индикатор для текущего пользователя -->
+                        <span class="text-muted">(Вы)</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <!-- Сообщение если в системе нет пользователей -->
+                <tr>
+                    <td colspan="7" class="text-center">Нет пользователей</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    <!-- Кнопка возврата на главную страницу -->
+    <div class="mt-3">
+        <a href="{% url 'home' %}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Назад на главную
+        </a>
+    </div>
+</div>
+{% endblock %}

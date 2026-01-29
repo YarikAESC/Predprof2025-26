@@ -1,0 +1,342 @@
+{% extends 'base.html' %}
+
+{% block title %}Статистика - Администратор{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4"><i class="fas fa-chart-line text-primary"></i> Статистика системы</h2>
+    
+    <!-- Основные показатели -->
+    <div class="row mb-4">
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                Всего пользователей
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_users|default:"0" }}</div>
+                            <div class="mt-2 text-xs">
+                                <span class="text-success">Ученики: {{ total_students|default:"0" }}</span> | 
+                                <span class="text-warning">Повара: {{ total_chefs|default:"0" }}</span>
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-users fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                Общий доход
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_income|default:"0" }} ₽</div>
+                            <div class="mt-2">
+                                <small class="text-muted">Сегодня: {{ today_income|default:"0" }} ₽</small>
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-money-bill-wave fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="card border-left-danger shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">
+                                Затраты на ингредиенты
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_ingredient_cost|default:"0" }} ₽</div>
+                            <div class="mt-2">
+                                <small class="text-muted">Сегодня: {{ today_ingredient_cost|default:"0" }} ₽</small>
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-shopping-basket fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="card border-left-warning shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                                Проблемы с запасами
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                {% if low_stock_count or out_of_stock_count %}
+                                {{ low_stock_count|add:out_of_stock_count }}
+                                {% else %}
+                                0
+                                {% endif %}
+                            </div>
+                            <div class="mt-2">
+                                <small class="badge bg-warning">Мало: {{ low_stock_count|default:"0" }}</small>
+                                <small class="badge bg-danger ms-1">Нет: {{ out_of_stock_count|default:"0" }}</small>
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-exclamation-triangle fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Финансовая аналитика -->
+    <div class="row">
+        <!-- Доходы vs Расходы -->
+        <div class="col-xl-8 col-lg-7 mb-4">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                    <h6 class="m-0 font-weight-bold text-primary"><i class="fas fa-chart-bar"></i> Финансовая аналитика</h6>
+                </div>
+                <div class="card-body">
+                    <!-- Прибыль -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card border-{% if profit >= 0 %}success{% else %}danger{% endif %}">
+            <div class="card-body text-center py-3">
+                <h5 class="mb-1">Чистая прибыль</h5>
+                <h2 class="mb-0 text-{% if profit >= 0 %}success{% else %}danger{% endif %}">
+                    {{ profit|default:"0" }} ₽
+                </h2>
+                <small class="text-muted">
+                    Доходы: {{ total_income|default:"0" }} ₽ - Расходы: {{ total_ingredient_cost|default:"0" }} ₽
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+
+                    <!-- Детализация -->
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card border-success mb-3">
+                                <div class="card-header bg-success text-white">
+                                    <h6 class="mb-0"><i class="fas fa-arrow-up"></i> Доходы</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-2">
+                                        <strong>Общий доход:</strong>
+                                        <span class="float-end text-success">{{ total_income|default:"0" }} ₽</span>
+                                    </div>
+                                    <div class="mb-2">
+                                        <strong>Доход сегодня:</strong>
+                                        <span class="float-end">{{ today_income|default:"0" }} ₽</span>
+                                    </div>
+                                    <div class="mb-2">
+                                        <strong>Всего платежей:</strong>
+                                        <span class="float-end">{{ total_payments|default:"0" }}</span>
+                                    </div>
+                                    <div>
+                                        <strong>Платежей сегодня:</strong>
+                                        <span class="float-end">{{ today_payments|default:"0" }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="card border-danger mb-3">
+                                <div class="card-header bg-danger text-white">
+                                    <h6 class="mb-0"><i class="fas fa-arrow-down"></i> Расходы</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-2">
+                                        <strong>Затраты на ингредиенты:</strong>
+                                        <span class="float-end text-danger">{{ total_ingredient_cost|default:"0" }} ₽</span>
+                                    </div>
+                                    <div class="mb-2">
+                                        <strong>Затраты сегодня:</strong>
+                                        <span class="float-end">{{ today_ingredient_cost|default:"0" }} ₽</span>
+                                    </div>
+                                    <div class="text-muted small mt-3">
+                                        <i class="fas fa-info-circle"></i> Стоимость закупки ингредиентов для блюд
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Активность пользователей -->
+        <div class="col-xl-4 col-lg-5 mb-4">
+            <div class="card shadow">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary"><i class="fas fa-user-clock"></i> Активность</h6>
+                </div>
+                <div class="card-body">
+                    <!-- Сегодня зашли -->
+                    <h6 class="text-primary mb-3">
+                        <i class="fas fa-sign-in-alt"></i> Сегодня зашли: 
+                        <span class="badge bg-primary">{{ today_logins|default:"0" }}</span>
+                    </h6>
+                    
+                    {% if today_logged_users %}
+                    <div class="table-responsive mb-4">
+                        <table class="table table-sm table-borderless">
+                            <tbody>
+                                {% for user in today_logged_users|slice:":5" %}
+                                <tr>
+                                    <td class="ps-0">
+                                        <div class="d-flex align-items-center">
+                                            <div class="avatar-circle bg-primary text-white me-2">
+                                                {{ user.username|first|upper }}
+                                            </div>
+                                            <div>
+                                                <strong class="d-block">{{ user.username }}</strong>
+                                                <small class="text-muted">
+                                                    {{ user.get_role_display|default:"Ученик" }}
+                                                </small>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="text-end pe-0">
+                                        <small class="text-muted">
+                                            {% if user.last_login %}
+                                            {{ user.last_login|time:"H:i" }}
+                                            {% else %}
+                                            —
+                                            {% endif %}
+                                        </small>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-3">
+                        <i class="fas fa-user-slash fa-2x text-muted mb-2"></i>
+                        <p class="text-muted mb-0">Сегодня еще никто не заходил</p>
+                    </div>
+                    {% endif %}
+
+                    <!-- Новые пользователи -->
+                    <h6 class="text-primary mb-3 mt-4">
+                        <i class="fas fa-user-plus"></i> Новые пользователи
+                    </h6>
+                    
+                    {% if recent_users %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-borderless">
+                            <tbody>
+                                {% for user in recent_users|slice:":5" %}
+                                <tr>
+                                    <td class="ps-0">
+                                        <div class="d-flex align-items-center">
+                                            <div class="avatar-circle 
+                                                {% if user.role == 'admin' %}bg-danger
+                                                {% elif user.role == 'chef' %}bg-warning
+                                                {% else %}bg-success{% endif %} text-white me-2">
+                                                {{ user.username|first|upper }}
+                                            </div>
+                                            <div>
+                                                <strong class="d-block">{{ user.username }}</strong>
+                                                <small class="text-muted">{{ user.date_joined|date:"d.m.Y" }}</small>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="text-end pe-0">
+                                        <span class="badge 
+                                            {% if user.role == 'admin' %}bg-danger
+                                            {% elif user.role == 'chef' %}bg-warning
+                                            {% else %}bg-success{% endif %}">
+                                            {{ user.get_role_display|default:"Ученик" }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted text-center">Нет новых пользователей</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+   
+
+<style>
+.card {
+    border-radius: 10px;
+    transition: all 0.3s;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 20px rgba(0,0,0,0.1) !important;
+}
+
+.border-left-primary {
+    border-left: 4px solid #4e73df !important;
+}
+
+.border-left-success {
+    border-left: 4px solid #1cc88a !important;
+}
+
+.border-left-danger {
+    border-left: 4px solid #e74a3b !important;
+}
+
+.border-left-warning {
+    border-left: 4px solid #f6c23e !important;
+}
+
+.avatar-circle {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.table-borderless tbody tr {
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.table-borderless tbody tr:last-child {
+    border-bottom: none;
+}
+
+.font-weight-bold {
+    font-weight: 600 !important;
+}
+
+.text-xs {
+    font-size: 0.85rem;
+}
+
+.shadow {
+    box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15) !important;
+}
+</style>
+{% endblock %}
