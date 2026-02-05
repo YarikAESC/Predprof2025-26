@@ -63,8 +63,6 @@ urlpatterns = [
     path('add-review/<int:order_id>/<int:dish_id>/', views.add_review, name='add_review'),
     
     #  Администратор 
-    # Главная страница админа
-    path('manage/dashboard/', views.admin_dashboard, name='admin_dashboard'),
     # Управление заказами
     path('manage/orders/', views.manage_orders, name='manage_orders'),
     # Управление блюдами
@@ -120,3 +118,4 @@ urlpatterns = [
     path('manage/inventory/request/<int:request_id>/delete/',
          views.delete_restock_request, name='delete_restock_request'),
 ]
+
