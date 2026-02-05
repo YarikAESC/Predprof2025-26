@@ -79,7 +79,7 @@
         <div class="container">
             <!-- Логотип -->
             <a class="navbar-brand" href="{% url 'home' %}">
-                <i class="fas  me-2 text-primary"></i>Управление столовой
+                <i class=" me-2 text-primary"></i>Управление столовой
             </a>
             
             <!-- Кнопка для мобильных устройств -->
@@ -151,26 +151,20 @@
                     
                     <!-- Для поваров -->
                     {% if user.is_chef %}
+                    <!-- Приготовление блюд -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'chef_prepare_dishes' %}">
+                            <i class="fas fa-utensils me-1"></i> Приготовить блюда
+                        </a>
+                    </li>
+                    
                     <!-- Запасы ингредиентов -->
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'chef_inventory' %}">
                             <i class="fas fa-boxes me-1"></i> Запасы
                         </a>
                     </li>
-                    
-                    <!-- Приготовление блюд -->
-                    <li class="nav-item">
-                         <a class="nav-link" href="{% url 'chef_prepare_dishes' %}">
-                            <i class="fas fa-utensils me-1"></i> Приготовить
-                         </a>
-                    </li>
-                   <!-- Комбо-заказы -->
-                    <li class="nav-item">
-                         <a class="nav-link" href="{% url 'chef_combo_orders' %}">
-                            <i class="fas fa-layer-group me-1"></i> Комбо-заказы
-                         </a>
-                            </li>
-
+                   
                     <!-- Управление блюдами -->
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'manage_dishes' %}">
@@ -178,7 +172,6 @@
                         </a>
                     </li>
                     {% endif %}
-                    
                     <!-- Для администраторов -->
                     {% if user.is_admin %}
                     <!-- Управление запасами -->
