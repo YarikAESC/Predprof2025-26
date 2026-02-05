@@ -27,12 +27,10 @@ urlpatterns = [
     path('combo/<int:combo_id>/order/', views.order_combo_set, name='order_combo_set'),
     # Заказы комбо-наборов
     path('combo/orders/', views.my_combo_orders, name='my_combo_orders'),
-    # Отмена заказа набора
-    path('combo/<int:order_id>/cancel/', views.cancel_combo_order, name='cancel_combo_order'),
-    # Заказы комбо-наборов для повара
-    path('chef/combo-orders/', views.chef_combo_orders, name='chef_combo_orders'),
-    # Изменение статуса заказа набора (повар)
-    path('chef/combo-order/<int:order_id>/update/', views.update_combo_order_status, name='update_combo_order_status'),
+    #Для готовых заказов
+    path('combo/ready/', views.available_combo_orders, name='available_combo_orders'),
+    #Отмена набора
+    path('combo/cancel/<int:combo_id>/', views.cancel_combo_set, name='cancel_combo_set'),
     
     #  Баланс и оплата 
     # Мой баланс
@@ -118,4 +116,3 @@ urlpatterns = [
     path('manage/inventory/request/<int:request_id>/delete/',
          views.delete_restock_request, name='delete_restock_request'),
 ]
-

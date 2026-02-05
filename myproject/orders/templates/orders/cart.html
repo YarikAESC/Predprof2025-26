@@ -33,14 +33,35 @@
                                 <p class="card-text">
                                     <small class="text-muted">{{ item.dish.category.name }}</small>
                                 </p>
+                                
+                                <!-- Добавьте блок проверки доступности -->
+                                {% if item.max_available %}
+                                <div class="mt-2">
+    {% if item.max_available >= item.quantity %}
+    <span class="badge bg-success">
+        <i class="fas fa-check"></i> Готовых: {{ item.max_available }} шт.
+    </span>
+    {% else %}
+    <span class="badge bg-danger">
+        <i class="fas fa-times"></i> Готовых: {{ item.max_available }} шт.
+    </span>
+    <small class="text-danger d-block mt-1">
+        В корзине {{ item.quantity }} шт., но готовых только {{ item.max_available }} шт.
+    </small>
+    {% endif %}
+</div>
+                                {% endif %}
                             </div>
                             <div class="col-md-4">
                                 <div class="d-flex justify-content-between align-items-center mb-2">
                                     <div class="input-group input-group-sm" style="width: 120px;">
                                         <form method="post" action="{% url 'update_cart' item.dish.id %}" class="d-flex">
                                             {% csrf_token %}
+                                            <!-- Ограничьте максимум доступным количеством -->
                                             <input type="number" name="quantity" value="{{ item.quantity }}" 
-                                                   min="1" max="10" class="form-control">
+                                                   min="1" 
+                                                   max="{% if item.max_available %}{{ item.max_available }}{% else %}99{% endif %}" 
+                                                   class="form-control">
                                             <div class="input-group-append">
                                                 <button type="submit" class="btn btn-outline-primary">✓</button>
                                             </div>
@@ -75,24 +96,76 @@
                         <span><strong>{{ total }} ₽</strong></span>
                     </div>
                     
+                    <!-- Добавьте проверку перед кнопкой оформления -->
                     {% if cart_items %}
-                    <a href="{% url 'create_order' %}" class="btn btn-success btn-lg btn-block">
-                         Оформить заказ
-                    </a>
+                        {% with all_available=True %}
+                            {% for item in cart_items %}
+                                {% if item.max_available and item.max_available < item.quantity %}
+                                    {% with all_available=False %}
+                                    {% endwith %}
+                                {% endif %}
+                            {% endfor %}
+                            
+                            {% if all_available %}
+                            <a href="{% url 'create_order' %}" class="btn btn-success btn-lg w-100">
+                                 Оформить заказ
+                            </a>
+                            {% else %}
+                            <div class="alert alert-danger">
+                                <i class="fas fa-exclamation-circle"></i>
+                                Невозможно оформить заказ. Проверьте доступность блюд.
+                            </div>
+                            <button class="btn btn-secondary btn-lg w-100" disabled>
+                                 Оформить заказ
+                            </button>
+                            {% endif %}
+                        {% endwith %}
                     {% endif %}
                     
-                    <a href="{% url 'menu' %}" class="btn btn-outline-primary btn-block mt-2">
+                    <a href="{% url 'menu' %}" class="btn btn-outline-primary w-100 mt-2">
                         ← Продолжить покупки
                     </a>
                     
                     {% if cart_items|length > 1 %}
-                    <a href="{% url 'create_combo_set' %}" class="btn btn-info btn-block mt-2">
+                    <a href="{% url 'create_combo_set' %}" class="btn btn-info w-100 mt-2">
                          Создать комбо-набор
                     </a>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Добавьте информацию о балансе -->
+            <div class="card mt-3">
+                <div class="card-body">
+                    <h6 class="card-title">
+                        <i class="fas fa-wallet"></i> Ваш баланс
+                    </h6>
+                    <p class="h4 text-primary">{{ user.balance }} ₽</p>
+                    {% if total > user.balance %}
+                    <div class="alert alert-warning mt-2">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        Недостаточно средств для оформления заказа
+                    </div>
+                    <a href="{% url 'my_balance' %}" class="btn btn-outline-warning btn-sm w-100">
+                        Пополнить баланс
+                    </a>
+                    {% else %}
+                    <small class="text-success">
+                        <i class="fas fa-check-circle"></i> Достаточно средств
+                    </small>
                     {% endif %}
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<script>
+// Автоматическая отправка формы при изменении количества
+document.querySelectorAll('input[type="number"]').forEach(input => {
+    input.addEventListener('change', function() {
+        this.form.submit();
+    });
+});
+</script>
 {% endblock %}

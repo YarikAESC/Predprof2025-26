@@ -53,12 +53,12 @@ class IngredientStock(models.Model):
     
     @property
     def is_low(self):
-        """Проверяет, мало ли осталось ингредиента"""
+        #Проверяет, мало ли осталось ингредиента
         return self.current_quantity <= self.min_quantity
     
     @property
     def is_out_of_stock(self):
-        """Проверяет, закончился ли ингредиент"""
+        #Проверяет, закончился ли ингредиент
         return self.current_quantity <= 0
 
 
@@ -126,10 +126,8 @@ class Dish(models.Model):
         return result['rating__avg'] or 0
 
     def check_availability(self, quantity=1):
-        """
-        Проверяет, можно ли приготовить указанное количество этого блюда
-        Возвращает (доступно, недостающие_ингредиенты)
-        """
+        # Проверяет, можно ли приготовить указанное количество этого блюда
+        # Возвращает (доступно, недостающие_ингредиенты)
         unavailable_ingredients = []
         
         for dish_ingredient in self.ingredients.all():
@@ -154,10 +152,8 @@ class Dish(models.Model):
         return len(unavailable_ingredients) == 0, unavailable_ingredients
     
     def reserve_ingredients(self, quantity=1, user=None):
-        """
-        Резервирует ингредиенты для приготовления блюда
-        Возвращает True если успешно, False если недостаточно
-        """
+        # Резервирует ингредиенты для приготовления блюда
+        # Возвращает True если успешно, False если недостаточно
         is_available, missing = self.check_availability(quantity)
         
         if not is_available:
@@ -183,6 +179,23 @@ class Dish(models.Model):
         
         return True, []
 
+    def get_max_available_quantity(self):
+        # Возвращает максимальное количество этого блюда, которое можно заказать 
+        max_available = 0
+        
+        # Готовые блюда
+        prepared_dishes = PreparedDish.objects.filter(dish=self)
+        prepared_available = sum(pd.quantity for pd in prepared_dishes)
+        max_available += prepared_available
+        
+        # Уже есть
+        try:
+            prepared_dishes = PreparedDish.objects.filter(dish=self)
+            total_available = sum(pd.quantity for pd in prepared_dishes)
+            return total_available
+        except:
+            return 0
+    
 
 # ИНГРЕДИЕНТЫ В БЛЮДЕ - сколько и каких ингредиентов в каждом блюде
 class DishIngredient(models.Model):
@@ -507,6 +520,9 @@ class ComboOrder(models.Model):
                                  related_name='combo_orders', verbose_name='Ученик')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES,
                               default='preparing', verbose_name='Статус')
+    main_order = models.ForeignKey('Order', on_delete=models.SET_NULL, 
+                                   null=True, blank=True, related_name='combo_order_ref',
+                                   verbose_name='Основной заказ')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='Дата обновления')
 
@@ -538,11 +554,9 @@ class IngredientCost(models.Model):
         return f"{self.ingredient.name}: {self.cost_per_unit} руб/{self.ingredient.unit}"
     
     def calculate_total_cost(self, quantity):
-        """Рассчитывает общую стоимость для указанного количества"""
+        #Рассчитывает общую стоимость для указанного количества
         return self.cost_per_unit * quantity
 
-
-# Обновим модель StockHistory для учета стоимости
 class StockHistory(models.Model):
     # Типы операций
     OPERATION_TYPES = [

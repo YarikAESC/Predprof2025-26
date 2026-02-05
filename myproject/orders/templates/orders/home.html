@@ -35,7 +35,7 @@
                             {% endif %}
                         </p>
 
-                        <!-- Блок аллергенов ТОЛЬКО для учеников -->
+                        <!-- Блок аллергенов -->
                         {% if user.is_student %}
                         <div class="mt-3 p-3 bg-light rounded">
                             <div class="d-flex justify-content-between align-items-center mb-2">
@@ -128,7 +128,7 @@
     </div>
     {% endif %}
 
-    <!-- Инструкция по работе (показывается ТОЛЬКО неавторизованным пользователям) -->
+    <!-- Инструкция по работе  -->
     {% if not user.is_authenticated %}
     <div class="row mb-5">
         <div class="col-12">
@@ -177,7 +177,7 @@
     </div>
     {% endif %}
     
-    <!-- Таблица доступных функций (показывается ТОЛЬКО авторизованным пользователям) -->
+    <!-- Таблица доступных функций  -->
     {% if user.is_authenticated %}
     <div class="row">
         <div class="col-12">
@@ -196,7 +196,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <!-- Функция профиля (доступна всем) -->
+                                <!-- Функция профиля -->
                                 <tr>
                                     <td><i class="fas fa-user text-secondary"></i> Профиль</td>
                                     <td><a href="{% url 'profile' %}" class="btn btn-sm btn-outline-secondary">Перейти</a></td>
@@ -257,12 +257,6 @@
                                     <td>Приготовление блюд партиями</td>
                                 </tr>
                                 
-                                <!-- Комбо-заказы для повара -->
-                                <tr>
-                                    <td><i class="fas fa-layer-group text-info"></i> Комбо-заказы</td>
-                                    <td><a href="{% url 'chef_combo_orders' %}" class="btn btn-sm btn-outline-info">Перейти</a></td>
-                                    <td>Выполнение комбо заказов</td>
-                                </tr>
                                 <!-- Управление блюдами -->
                                 <tr>
                                     <td><i class="fas fa-book-open text-secondary"></i> Управление блюдами</td>

@@ -1,94 +1,67 @@
 {% extends 'base.html' %}
 
-{% block title %}Заказы комбо-наборов{% endblock %}
+{% block title %}История комбо-заказов{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
-    <h1 class="mb-4"><i class="fas fa-shopping-bag"></i> Заказы комбо-наборов</h1>
+    <h1 class="mb-4"><i class="fas fa-history"></i> История комбо-заказов</h1>
 
-    <!-- Навигация между разделами комбо-системы -->
-    <div class="mb-4">
-        <a href="{% url 'my_combo_sets' %}" class="btn btn-primary">
-            <i class="fas fa-layer-group"></i> Мои наборы
-        </a>
-        <a href="{% url 'menu' %}" class="btn btn-outline-primary">
-            <i class="fas fa-plus"></i> Создать новый набор
-        </a>
-    </div>
 
-    <!-- Таблица истории заказов комбо-наборов -->
     {% if combo_orders %}
-    <div class="table-responsive">
-        <table class="table table-hover">
-            <thead>
-                <tr>
-                    <th>Заказ</th>
-                    <th>Набор</th>
-                    <th>Состав</th>
-                    <th>Статус</th>
-                    <th>Дата</th>
-                    <th>Действия</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for order in combo_orders %}
-                <tr>
-                    <!-- Номер заказа -->
-                    <td>#{{ order.id }}</td>
-                    
-                    <!-- Информация о комбо-наборе -->
-                    <td>
-                        <strong>{{ order.combo_set.name }}</strong>
-                        <br><small class="text-muted">{{ order.combo_set.total_price }} ₽</small>
-                    </td>
-                    
-                    <!-- Состав набора в виде бейджей -->
-                    <td>
-                        {% for item in order.combo_set.items.all %}
-                        <span class="badge bg-light text-dark">{{ item.dish.name }} x{{ item.quantity }}</span>
+    <div class="card">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-list"></i> Список заказов из комбо-наборов</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>ID заказа</th>
+                            <th>Набор</th>
+                            <th>Состав</th>
+                            <th>Осталось</th>
+                            <th>Дата</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for combo_order in combo_orders %}
+                        <tr>
+                            <td>
+                                {% if combo_order.main_order %}
+                                <a href="{% url 'view_order' combo_order.main_order.id %}" class="text-decoration-none">
+                                    #{{ combo_order.main_order.id }}
+                                </a>
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+                            <td>
+                                <strong>{{ combo_order.combo_set.name }}</strong>
+                                <br><small>{{ combo_order.combo_set.total_price }} ₽ за заказ</small>
+                            </td>
+                            <td>
+                                {% for item in combo_order.combo_set.items.all|slice:":3" %}
+                                <span class="badge bg-light text-dark mb-1">{{ item.dish.name }} x{{ item.quantity }}</span>
+                                {% endfor %}
+                                {% if combo_order.combo_set.items.all|length > 3 %}
+                                <span class="badge bg-secondary">+{{ combo_order.combo_set.items.all|length|add:"-3" }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge {% if combo_order.combo_set.remaining_orders > 0 %}bg-success{% else %}bg-secondary{% endif %}">
+                                    {{ combo_order.combo_set.remaining_orders }}/{{ combo_order.combo_set.max_orders }}
+                                </span>
+                            </td>
+                            <td>{{ combo_order.created_at|date:"d.m.Y" }}</td>
+                        </tr>
                         {% endfor %}
-                    </td>
-                    
-                    <!-- Статус заказа с цветовым кодированием -->
-                    <td>
-                        <span class="badge
-                            {% if order.status == 'preparing' %}bg-warning
-                            {% elif order.status == 'ready' %}bg-success
-                            {% else %}bg-secondary{% endif %}">
-                            {% if order.status == 'preparing' %}Готовится
-                            {% elif order.status == 'ready' %}Готово
-                            {% else %}Получено{% endif %}
-                        </span>
-                    </td>
-                    
-                    <!-- Дата и время создания заказа -->
-                    <td>{{ order.created_at|date:"d.m.Y H:i" }}</td>
-                    
-                    <!-- Контекстные действия в зависимости от статуса -->
-                    <td>
-                        {% if order.status == 'preparing' %}
-                        <!-- Форма отмены заказа с подтверждением -->
-                        <form method="post" action="{% url 'cancel_combo_order' order.id %}" class="d-inline">
-                            {% csrf_token %}
-                            <button type="submit" class="btn btn-sm btn-danger"
-                                    onclick="return confirm('Отменить заказ набора?')">
-                                <i class="fas fa-times"></i> Отменить
-                            </button>
-                        </form>
-                        {% elif order.status == 'ready' %}
-                        <!-- Кнопка получения заказа (пока не реализована) -->
-                        <button class="btn btn-sm btn-success" disabled>
-                            <i class="fas fa-check"></i> Забрать
-                        </button>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
     {% else %}
-    <!-- Пустое состояние - нет заказов -->
     <div class="card">
         <div class="card-body text-center py-5">
             <i class="fas fa-shopping-bag fa-3x text-muted mb-3"></i>
@@ -100,5 +73,26 @@
         </div>
     </div>
     {% endif %}
+    
+    <!-- Ссылки на другие разделы -->
+    <div class="mt-4">
+        <div class="row">
+            <div class="col-md-4">
+                <a href="{% url 'my_combo_sets' %}" class="btn btn-outline-primary w-100">
+                    <i class="fas fa-layer-group"></i> Мои комбо-наборы
+                </a>
+            </div>
+            <div class="col-md-4">
+                <a href="{% url 'order_history' %}" class="btn btn-outline-success w-100">
+                    <i class="fas fa-history"></i> История всех заказов
+                </a>
+            </div>
+            <div class="col-md-4">
+                <a href="{% url 'view_current_orders' %}" class="btn btn-outline-warning w-100">
+                    <i class="fas fa-clock"></i> Текущие заказы
+                </a>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}

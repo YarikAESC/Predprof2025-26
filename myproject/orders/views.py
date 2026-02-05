@@ -142,12 +142,8 @@ def add_to_cart(request, dish_id):
     
     prepared_dish = PreparedDish.objects.filter(dish=dish).first()
     prepared_quantity = prepared_dish.quantity if prepared_dish else 0
-    
-    is_available = (prepared_quantity > 0) or dish.is_available
-    
-    if not is_available:
-        messages.error(request, f'"{dish.name}" временно недоступно')
-        return redirect('menu')
+        
+
     
     if dish_id_str in cart:
         cart[dish_id_str] += 1
@@ -158,50 +154,42 @@ def add_to_cart(request, dish_id):
     messages.success(request, f'"{dish.name}" добавлено в корзину')
     return redirect('menu')
 
-
 @login_required
 @user_can_use_cart
 def view_cart(request):
-    # Показывает содержимое корзины
     cart = request.session.get('cart', {})
     cart_items = []
     total = 0
-    all_available = True
     
     for dish_id_str, quantity in cart.items():
         try:
-            dish_id = int(dish_id_str)
-            dish = Dish.objects.get(id=dish_id, is_available=True)
+            dish = Dish.objects.get(id=int(dish_id_str))
             item_total = dish.price * quantity
             
-            is_available, missing = dish.check_availability(quantity)
+            # Проверка доступного количества ТОЛЬКО из готовых
+            prepared_dishes = PreparedDish.objects.filter(dish=dish)
+            max_available = sum(pd.quantity for pd in prepared_dishes)
             
             cart_items.append({
                 'dish': dish,
                 'quantity': quantity,
                 'total': item_total,
-                'is_available': is_available,
-                'missing_ingredients': missing
+                'max_available': max_available  # Доступно только из готовых
             })
             total += item_total
-            
-            if not is_available:
-                all_available = False
-                
         except (Dish.DoesNotExist, ValueError):
             continue
     
     return render(request, 'orders/cart.html', {
         'cart_items': cart_items,
-        'total': total,
-        'all_available': all_available
+        'total': total
     })
 
 
 @login_required
 @user_can_use_cart
 def update_cart(request, dish_id):
-    # Меняет количество блюда в корзине
+    # Меняет количество блюда в корзине с проверкой доступности из готовых
     cart = request.session.get('cart', {})
     dish_id_str = str(dish_id)
     
@@ -209,16 +197,37 @@ def update_cart(request, dish_id):
         quantity = request.POST.get('quantity')
         if quantity and quantity.isdigit():
             quantity = int(quantity)
-            if quantity > 0:
-                cart[dish_id_str] = quantity
-            else:
+            
+            # Проверяем доступность блюда ИЗ ГОТОВЫХ
+            try:
+                dish = Dish.objects.get(id=dish_id)
+                # Считаем только готовые блюда
+                prepared_dishes = PreparedDish.objects.filter(dish=dish)
+                max_available = sum(pd.quantity for pd in prepared_dishes)
+                
+                # Если количество превышает доступное
+                if quantity > max_available:
+                    messages.warning(request, 
+                        f'Блюдо "{dish.name}" доступно только в количестве {max_available} шт. '
+                        f'Вы указали {quantity} шт.'
+                    )
+                    quantity = max_available  # Автоматически ограничиваем максимумом
+                
+                if quantity > 0:
+                    cart[dish_id_str] = quantity
+                else:
+                    cart.pop(dish_id_str, None)
+                    messages.info(request, f'Блюдо "{dish.name}" удалено из корзины')
+                    
+            except Dish.DoesNotExist:
                 cart.pop(dish_id_str, None)
+                messages.error(request, 'Блюдо не найдено')
+                
         else:
             cart.pop(dish_id_str, None)
     
     request.session['cart'] = cart
     return redirect('view_cart')
-
 
 @login_required
 @user_can_use_cart
@@ -234,8 +243,6 @@ def remove_from_cart(request, dish_id):
     
     return redirect('view_cart')
 
-
-#  ЗАКАЗЫ 
 
 @login_required
 def create_order(request):
@@ -259,43 +266,68 @@ def create_order(request):
             try:
                 dish = Dish.objects.get(id=int(dish_id_str))
                 
-                is_available = False
-                prepared_quantity = 0
-                available_through_ingredients = False
+                # Проверяем максимально доступное количество
+                max_available = 0
                 
-                prepared_dish = PreparedDish.objects.filter(dish=dish).first()
-                if prepared_dish and prepared_dish.quantity >= quantity:
-                    prepared_quantity = prepared_dish.quantity
-                    is_available = True
-                else:
-                    available_through_ingredients, missing = dish.check_availability(quantity)
-                    is_available = available_through_ingredients
+                # 1. Проверяем готовые блюда
+                prepared_dishes = PreparedDish.objects.filter(dish=dish)
+                prepared_available = sum(pd.quantity for pd in prepared_dishes)
                 
-                if is_available:
+                # 2. Проверяем возможность приготовить из ингредиентов
+                can_prepare_max = 0
+                if dish.check_availability(1)[0]:  # Если можно приготовить хотя бы 1
+                    # Находим максимальное количество, которое можно приготовить
+                    can_prepare_max = dish.check_availability(100)[1]  # Проверяем на большое число
+                    if isinstance(can_prepare_max, list):
+                        # Если check_availability возвращает список недостающих ингредиентов
+                        # Нужно рассчитать максимальное количество на основе ингредиентов
+                        max_from_ingredients = float('inf')
+                        for ingredient in dish.ingredients.all():
+                            try:
+                                stock = ingredient.ingredient.stock
+                                if ingredient.quantity > 0:
+                                    available_qty = int(stock.current_quantity // ingredient.quantity)
+                                    max_from_ingredients = min(max_from_ingredients, available_qty)
+                            except IngredientStock.DoesNotExist:
+                                max_from_ingredients = 0
+                                break
+                        can_prepare_max = max_from_ingredients if max_from_ingredients != float('inf') else 0
+                
+                # Суммируем доступное количество
+                max_available = prepared_available + can_prepare_max
+                
+                # Проверяем, достаточно ли доступного количества
+                if max_available >= quantity:
+                    # Достаточно, определяем источник
+                    is_prepared = (prepared_available >= quantity)
+                    prepared_dish_for_reservation = prepared_dishes.first() if prepared_dishes.exists() else None
+                    
                     order_items.append({
                         'dish': dish,
                         'quantity': quantity,
-                        'is_prepared': prepared_quantity >= quantity,
-                        'prepared_dish': prepared_dish if prepared_dish else None,
-                        'available_through_ingredients': available_through_ingredients,
-                        'prepared_quantity': prepared_quantity
+                        'is_prepared': is_prepared,
+                        'prepared_dish': prepared_dish_for_reservation,
+                        'prepared_available': prepared_available,
+                        'can_prepare_max': can_prepare_max,
+                        'max_available': max_available
                     })
                     total += dish.price * quantity
                 else:
-                    if available_through_ingredients:
-                        unavailable_items.append({
-                            'dish': dish,
-                            'quantity': quantity,
-                            'missing': [],
-                            'reason': 'not_prepared'
-                        })
-                    else:
-                        unavailable_items.append({
-                            'dish': dish,
-                            'quantity': quantity,
-                            'missing': missing,
-                            'reason': 'no_ingredients'
-                        })
+                    # Недостаточно доступного количества
+                    available_sources = []
+                    if prepared_available > 0:
+                        available_sources.append(f"готовых: {prepared_available}")
+                    if can_prepare_max > 0:
+                        available_sources.append(f"можно приготовить: {can_prepare_max}")
+                    
+                    unavailable_items.append({
+                        'dish': dish,
+                        'quantity': quantity,
+                        'max_available': max_available,
+                        'available_sources': ", ".join(available_sources) if available_sources else "нет",
+                        'reason': 'not_enough_quantity'
+                    })
+                    
             except Dish.DoesNotExist:
                 unavailable_items.append({
                     'dish_id': dish_id_str,
@@ -304,7 +336,7 @@ def create_order(request):
                 })
         
         if unavailable_items:
-            messages.error(request, 'Некоторые блюда недоступны')
+            messages.error(request, 'Некоторые блюда недоступны в запрошенном количестве')
             return render(request, 'orders/order_unavailable.html', {
                 'unavailable_items': unavailable_items,
                 'cart': cart
@@ -316,10 +348,13 @@ def create_order(request):
 
         order = Order.objects.create(customer=request.user, status='pending', total_price=total)
 
+        # Процесс резервирования и создания элементов заказа
         for item in order_items:
             if item['is_prepared']:
+                # Используем готовые блюда
                 prepared_dish = item['prepared_dish']
                 if prepared_dish:
+                    # Резервируем из готовых
                     prepared_dish.quantity -= item['quantity']
                     prepared_dish.save()
                 
@@ -331,6 +366,7 @@ def create_order(request):
                     status='ready'
                 )
             else:
+                # Нужно приготовить (частично или полностью из ингредиентов)
                 success, _ = item['dish'].reserve_ingredients(item['quantity'], request.user)
                 if success:
                     OrderItem.objects.create(
@@ -345,6 +381,7 @@ def create_order(request):
                     messages.error(request, 'Произошла ошибка при резервировании ингредиентов')
                     return redirect('view_cart')
         
+        # Определяем статус заказа
         all_items = order.items.all()
         if all_items.count() > 0:
             all_ready = all(item.status == 'ready' for item in all_items)
@@ -354,6 +391,7 @@ def create_order(request):
                 order.status = 'preparing'
             order.save()
         
+        # Оплата
         if request.user.deduct_balance(total, description=f"Оплата заказа #{order.id}"):
             Payment.objects.create(
                 order=order,
@@ -365,6 +403,7 @@ def create_order(request):
                 description=f"Оплата заказа #{order.id}"
             )
 
+        # Очищаем корзину
         request.session['cart'] = {}
         
         messages.success(request, f'Заказ #{order.id} оформлен!')
@@ -566,9 +605,10 @@ def pay_with_balance(request, order_id):
 
 #  КОМБО-НАБОРЫ 
 
+# КОМБО-НАБОРЫ (с предоплатой за несколько готовых заказов)
+
 @login_required
 def my_combo(request):
-    # Главная страница комбо-наборов
     try:
         combo_sets_count = ComboSet.objects.filter(created_by=request.user).count()
     except:
@@ -581,7 +621,7 @@ def my_combo(request):
 @login_required
 @user_can_use_cart
 def create_combo_set(request):
-    # Создание комбо-набора из корзины
+    # Создание комбо-набора с предоплатой за несколько заказов
     if not request.user.is_student():
         messages.error(request, 'Только ученики могут создавать комбо-наборы')
         return redirect('menu')
@@ -598,10 +638,10 @@ def create_combo_set(request):
         try:
             max_orders = int(max_orders)
             if max_orders < 1 or max_orders > 100:
-                messages.error(request, 'Количество повторов должно быть от 1 до 100')
+                messages.error(request, 'Количество заказов должно быть от 1 до 100')
                 return redirect('view_cart')
         except ValueError:
-            messages.error(request, 'Некорректное количество повторов')
+            messages.error(request, 'Некорректное количество заказов')
             return redirect('view_cart')
 
         cart_items = []
@@ -613,7 +653,7 @@ def create_combo_set(request):
                     dish_id = int(key.replace('quantity_', ''))
                     quantity = int(value)
                     if quantity > 0:
-                        dish = Dish.objects.get(id=dish_id, is_available=True)
+                        dish = Dish.objects.get(id=dish_id)
                         item_total = dish.price * quantity
                         cart_items.append({'dish': dish, 'quantity': quantity, 'total': item_total})
                         single_price += item_total
@@ -625,33 +665,48 @@ def create_combo_set(request):
             return redirect('view_cart')
 
         try:
+            # Рассчитываем общую стоимость предоплаты
             total_price = single_price * max_orders
 
+            # Проверяем баланс
             if not request.user.can_afford(total_price):
                 messages.error(request, f'Недостаточно средств. Нужно: {total_price} ₽, на балансе: {request.user.balance} ₽')
                 return redirect('my_balance')
 
+            # Создаем комбо-набор
             combo_set = ComboSet.objects.create(
                 name=name,
                 description=description,
                 created_by=request.user,
-                total_price=single_price,
+                total_price=single_price,  # Цена за один заказ
                 is_active=True,
                 max_orders=max_orders,
                 orders_used=0
             )
 
+            # Добавляем блюда в набор
             for item in cart_items:
                 ComboItem.objects.create(combo_set=combo_set, dish=item['dish'], quantity=item['quantity'])
 
-            if request.user.deduct_balance(total_price, description=f"Оплата комбо-набора '{name}' (x{max_orders} заказов по {single_price} ₽)"):
+            # Списание средств за ВСЕ заказы заранее
+            if request.user.deduct_balance(total_price, description=f"Предоплата комбо-набора '{name}' (x{max_orders} заказов)"):
                 Payment.objects.create(
                     user=request.user,
                     amount=total_price,
                     status='paid',
                     payment_method='balance',
                     completed_at=timezone.now(),
-                    description=f"Оплата комбо-набора '{name}' (x{max_orders} заказов по {single_price} ₽)"
+                    description=f"Предоплата комбо-набора '{name}' (x{max_orders} заказов)"
+                )
+                
+                # Создаем транзакцию
+                Transaction.objects.create(
+                    user=request.user,
+                    amount=total_price,
+                    transaction_type='payment',
+                    balance_after=request.user.balance,
+                    description=f"Предоплата комбо-набора '{name}' (x{max_orders} заказов)",
+                    order=None  # Без привязки к конкретному заказу
                 )
 
             messages.success(request, f'Комбо-набор "{name}" создан! Оплачено {total_price} ₽ за {max_orders} заказов.')
@@ -668,7 +723,7 @@ def create_combo_set(request):
     for dish_id_str, quantity in cart.items():
         try:
             dish_id = int(dish_id_str)
-            dish = Dish.objects.get(id=dish_id, is_available=True)
+            dish = Dish.objects.get(id=dish_id)
             item_total = dish.price * quantity
             cart_items.append({'dish': dish, 'quantity': quantity, 'total': item_total})
             single_price += item_total
@@ -688,19 +743,38 @@ def create_combo_set(request):
 
 @login_required
 def my_combo_sets(request):
-    # Список комбо-наборов пользователя
+    # Список комбо-наборов пользователя с остатками заказов
     if not request.user.is_student():
         messages.error(request, 'Только ученики могут создавать комбо-наборы')
         return redirect('menu')
 
-    combo_sets = ComboSet.objects.filter(created_by=request.user).filter(models.Q(is_active=True) | models.Q(orders_used__lt=models.F('max_orders'))).prefetch_related('items__dish').order_by('-created_at')
+    combo_sets = ComboSet.objects.filter(
+        created_by=request.user,
+        is_active=True
+    ).prefetch_related('items__dish').order_by('-created_at')
+
+    # Проверяем доступность каждого набора
+    for combo_set in combo_sets:
+        combo_set.can_order_now = check_combo_availability(combo_set)
 
     return render(request, 'orders/my_combo_sets.html', {'combo_sets': combo_sets})
 
 
+def check_combo_availability(combo_set):
+    #Проверяет, можно ли прямо сейчас заказать этот комбо-набор (достаточно ли готовых блюд)
+    
+    for combo_item in combo_set.items.all():
+        prepared_dishes = PreparedDish.objects.filter(dish=combo_item.dish, quantity__gt=0)
+        total_available = sum(pd.quantity for pd in prepared_dishes)
+        
+        if total_available < combo_item.quantity:
+            return False
+    return True
+
+
 @login_required
 def order_combo_set(request, combo_id):
-    # Заказ комбо-набора
+    # Забрать один заказ из предоплаченного комбо-набора
     combo_set = get_object_or_404(ComboSet, id=combo_id, is_active=True)
 
     if combo_set.remaining_orders <= 0:
@@ -711,89 +785,241 @@ def order_combo_set(request, combo_id):
         messages.error(request, 'Вы не можете заказать этот набор')
         return redirect('my_combo_sets')
 
-    combo_order = ComboOrder.objects.create(combo_set=combo_set, customer=request.user, status='preparing')
+    # Проверяем наличие готовых блюд
+    unavailable_items = []
+    for combo_item in combo_set.items.all():
+        prepared_dishes = PreparedDish.objects.filter(dish=combo_item.dish, quantity__gt=0)
+        total_available = sum(pd.quantity for pd in prepared_dishes)
+        
+        if total_available < combo_item.quantity:
+            unavailable_items.append({
+                'dish': combo_item.dish.name,
+                'required': combo_item.quantity,
+                'available': total_available
+            })
 
-    order = Order.objects.create(
-        customer=request.user,
-        status='preparing',
-        total_price=combo_set.total_price,
-        notes=f"Комбо-набор: {combo_set.name}"
-    )
+    if unavailable_items:
+        error_msg = "Недостаточно готовых блюд:<br>"
+        for item in unavailable_items:
+            error_msg += f"- {item['dish']}: нужно {item['required']}, доступно {item['available']}<br>"
+        messages.error(request, error_msg)
+        return redirect('my_combo_sets')
 
-    for item in combo_set.items.all():
-        OrderItem.objects.create(
-            order=order,
-            dish=item.dish,
-            quantity=item.quantity,
-            price_at_time=item.dish.price
+    try:
+        # Создаем обычный заказ (но БЕЗ оплаты - уже предоплачено!)
+        order = Order.objects.create(
+            customer=request.user,
+            status='pending',  # Ожидает получения
+            total_price=combo_set.total_price,  # Для информации
+            notes=f"Комбо-набор: {combo_set.name} (заказ {combo_set.orders_used + 1}/{combo_set.max_orders})",
+            is_visible_to_customer=True
         )
+
+        # Добавляем блюда в заказ и резервируем из готовых
+        for combo_item in combo_set.items.all():
+            # Создаем элемент заказа
+            OrderItem.objects.create(
+                order=order,
+                dish=combo_item.dish,
+                quantity=combo_item.quantity,
+                price_at_time=combo_item.dish.price,
+                status='ready'  # Готово к выдаче
+            )
+            
+            # Резервируем готовые блюда
+            remaining_quantity = combo_item.quantity
+            prepared_dishes = PreparedDish.objects.filter(
+                dish=combo_item.dish, 
+                quantity__gt=0
+            ).order_by('prepared_at')  # Берем более старые блюда сначала
+            
+            for prepared_dish in prepared_dishes:
+                if remaining_quantity <= 0:
+                    break
+                    
+                if prepared_dish.quantity >= remaining_quantity:
+                    prepared_dish.quantity -= remaining_quantity
+                    prepared_dish.save()
+                    remaining_quantity = 0
+                else:
+                    remaining_quantity -= prepared_dish.quantity
+                    prepared_dish.quantity = 0
+                    prepared_dish.save()
+
+        # Создаем запись о заказе комбо-набора
+        ComboOrder.objects.create(
+            combo_set=combo_set,
+            customer=request.user,
+            status='ready',  # Готов к выдаче
+            main_order=order
+        )
+
+        # Увеличиваем счетчик использованных заказов
+        combo_set.increment_usage()
+
+        messages.success(request, f'Заказ #{order.id} из набора "{combo_set.name}" создан! Осталось заказов: {combo_set.remaining_orders}. Забрать можно прямо сейчас.')
+        return redirect('view_order', order_id=order.id)
+
+    except Exception as e:
+        messages.error(request, f'Ошибка создания заказа: {str(e)}')
+        return redirect('my_combo_sets')
+
+
+@login_required
+def take_combo_order(request, order_id):
+    # Получить заказ из комбо-набора
+    order = get_object_or_404(Order, id=order_id, customer=request.user)
     
-    combo_set.increment_usage()
-    messages.success(request,f'Заказ комбо-набора "{combo_set.name}" создан! Повар получил уведомление.')
-    return redirect('my_combo_orders')
+    # Проверяем, что это заказ из комбо-набора
+    if not order.notes.startswith('Комбо-набор:'):
+        messages.error(request, 'Это не заказ из комбо-набора')
+        return redirect('view_order', order_id=order.id)
+    
+    if order.status != 'pending':
+        messages.error(request, 'Заказ уже получен или отменен')
+        return redirect('view_order', order_id=order.id)
+    
+    # Создаем запись о получении
+    OrderPickup.objects.create(
+        order=order,
+        picked_up_by=request.user
+    )
+    
+    # Меняем статус заказа
+    order.status = 'picked_up'
+    order.save()
+    
+    # Обновляем статус комбо-заказа
+    try:
+        combo_order = ComboOrder.objects.get(main_order=order)
+        combo_order.status = 'picked_up'
+        combo_order.save()
+    except ComboOrder.DoesNotExist:
+        pass
+    
+    messages.success(request, f'Заказ #{order.id} получен! Приятного аппетита!')
+    return redirect('order_history')
 
 
 @login_required
 def my_combo_orders(request):
-    # Заказы комбо-наборов пользователя
+    # История заказов комбо-наборов пользователя
     if not request.user.is_student():
         messages.error(request, 'Только ученики могут заказывать комбо-наборы')
         return redirect('menu')
 
-    combo_orders = ComboOrder.objects.filter(customer=request.user).select_related('combo_set').order_by('-created_at')
+    combo_orders = ComboOrder.objects.filter(customer=request.user).select_related(
+        'combo_set', 'main_order'
+    ).order_by('-created_at')
 
     return render(request, 'orders/my_combo_orders.html', {'combo_orders': combo_orders})
 
 
 @login_required
 def cancel_combo_order(request, order_id):
-    # Отмена заказа комбо-набора
-    combo_order = get_object_or_404(ComboOrder, id=order_id, customer=request.user)
-
-    if combo_order.status in ['preparing']:
-        combo_order.status = 'cancelled'
-        combo_order.save()
-        messages.success(request, f'Заказ комбо-набора отменен')
-    else:
-        messages.error(request, 'Невозможно отменить заказ в текущем статусе')
-
-    return redirect('my_combo_orders')
+    # Отмена одного заказа из комбо-набора
+    order = get_object_or_404(Order, id=order_id, customer=request.user)
+    
+    if order.status != 'pending':
+        messages.error(request, 'Нельзя отменить заказ в текущем статусе')
+        return redirect('view_order', order_id=order.id)
+    
+    try:
+        # Возвращаем блюда обратно в готовые
+        for order_item in order.items.all():
+            prepared_dish, created = PreparedDish.objects.get_or_create(
+                dish=order_item.dish,
+                defaults={'quantity': order_item.quantity}
+            )
+            
+            if not created:
+                prepared_dish.quantity += order_item.quantity
+                prepared_dish.save()
+        
+        # Уменьшаем счетчик использованных заказов в комбо-наборе
+        try:
+            combo_order = ComboOrder.objects.get(main_order=order)
+            combo_set = combo_order.combo_set
+            
+            # Увеличиваем оставшееся количество заказов
+            if combo_set.orders_used > 0:
+                combo_set.orders_used -= 1
+                combo_set.is_active = True  # Возвращаем активность
+                combo_set.save()
+            
+            # Удаляем запись о комбо-заказе
+            combo_order.delete()
+        except ComboOrder.DoesNotExist:
+            pass
+        
+        # Отменяем заказ
+        order.status = 'cancelled'
+        order.is_visible_to_customer = False
+        order.save()
+        
+        messages.success(request, 'Заказ отменен. Остаток заказов в наборе восстановлен.')
+        return redirect('my_combo_sets')
+        
+    except Exception as e:
+        messages.error(request, f'Ошибка при отмене заказа: {str(e)}')
+        return redirect('view_order', order_id=order.id)
 
 
 @login_required
-def chef_combo_orders(request):
-    # Заказы комбо-наборов для повара
-    if not request.user.is_chef():
-        messages.error(request, 'Доступно только для поваров')
-        return redirect('menu')
+def cancel_combo_set(request, combo_id):
+    # Полная отмена всего комбо-набора с возвратом средств
+    combo_set = get_object_or_404(ComboSet, id=combo_id, created_by=request.user)
+    
+    if combo_set.orders_used > 0:
+        messages.error(request, 'Нельзя отменить набор, из которого уже брали заказы')
+        return redirect('my_combo_sets')
+    
+    try:
+        # Рассчитываем сумму для возврата
+        total_refund = combo_set.total_price * combo_set.max_orders
+        
+        # Возвращаем средства
+        request.user.add_balance(
+            total_refund,
+            description=f"Возврат предоплаты за комбо-набор '{combo_set.name}'"
+        )
+        
+        # Создаем транзакцию возврата
+        Transaction.objects.create(
+            user=request.user,
+            amount=total_refund,
+            transaction_type='refund',
+            balance_after=request.user.balance,
+            description=f"Возврат предоплаты за комбо-набор '{combo_set.name}'"
+        )
+        
+        # Удаляем комбо-набор
+        combo_set.delete()
+        
+        messages.success(request, f'Комбо-набор отменен. Средства ({total_refund} ₽) возвращены на баланс.')
+        return redirect('my_combo_sets')
+        
+    except Exception as e:
+        messages.error(request, f'Ошибка при отмене набора: {str(e)}')
+        return redirect('my_combo_sets')
 
-    combo_orders = ComboOrder.objects.filter(status='preparing').select_related('combo_set', 'customer').prefetch_related('combo_set__items__dish').order_by('created_at')
 
-    return render(request, 'orders/chef_combo_orders.html', {'combo_orders': combo_orders})
-
-
+# Для просмотра доступных комбо-заказов (для информации)
 @login_required
-def update_combo_order_status(request, order_id):
-    # Изменение статуса заказа комбо-набора (повар)
-    if not request.user.is_chef():
-        messages.error(request, 'Доступно только для поваров')
+def available_combo_orders(request):
+    # Показывает все заказы из комбо-наборов, которые готовы к выдаче
+    if not request.user.is_student():
+        messages.error(request, 'Только ученики могут просматривать заказы')
         return redirect('menu')
 
-    combo_order = get_object_or_404(ComboOrder, id=order_id)
+    # Ищем заказы в статусе 'pending' с пометкой о комбо-наборе
+    combo_orders = Order.objects.filter(
+        customer=request.user,
+        status='pending',
+        notes__startswith='Комбо-набор:'
+    ).order_by('created_at')
 
-    if request.method == 'POST':
-        new_status = request.POST.get('status')
-
-        if new_status in ['ready', 'preparing']:
-            combo_order.status = new_status
-            combo_order.save()
-
-            if new_status == 'ready':
-                messages.success(request, f'Комбо-набор #{combo_order.id} отмечен как готовый!')
-            else:
-                messages.success(request, f'Статус комбо-набора обновлен')
-
-    return redirect('chef_combo_orders')
+    return render(request, 'orders/available_combo_orders.html', {'combo_orders': combo_orders})
 
 
 #  РАБОТА ПОВАРА 
@@ -918,7 +1144,7 @@ def chef_prepare_dishes(request):
         messages.error(request, 'Доступно только для поваров')
         return redirect('menu')
     
-    dishes_to_prepare = Dish.objects.filter(is_available=True)
+    dishes_to_prepare = Dish.objects.all()
     prepared_dishes = PreparedDish.objects.all().select_related('dish')
     
     low_stock_count = IngredientStock.objects.filter(current_quantity__lte=models.F('min_quantity')).count()
@@ -937,26 +1163,24 @@ def chef_prepare_dishes(request):
                     messages.error(request, 'Количество должно быть положительным')
                     return redirect('chef_prepare_dishes')
                 
-                is_available, missing = dish.check_availability(quantity)
+                missing = dish.check_availability(quantity)
                 
-                if is_available:
-                    success, _ = dish.reserve_ingredients(quantity, request.user)
-                    if success:
-                        prepared_dish, created = PreparedDish.objects.get_or_create(
-                            dish=dish,
-                            defaults={'quantity': quantity, 'prepared_by': request.user}
-                        )
-                        if not created:
-                            prepared_dish.quantity += quantity
-                            prepared_dish.prepared_by = request.user
-                            prepared_dish.save()
+                success, _ = dish.reserve_ingredients(quantity, request.user)
+                if success:
+                    prepared_dish, created = PreparedDish.objects.get_or_create(
+                        dish=dish,
+                        defaults={'quantity': quantity, 'prepared_by': request.user}
+                    )
+                    if not created:
+                        prepared_dish.quantity += quantity
+                        prepared_dish.prepared_by = request.user
+                        prepared_dish.save()
                         
-                        messages.success(request, f'Приготовлено {quantity} порций {dish.name}')
-                    else:
-                        messages.error(request, f'Ошибка при резервировании ингредиентов')
+                    messages.success(request, f'Приготовлено {quantity} порций {dish.name}')
                 else:
-                    missing_list = ", ".join([f"{m['ingredient'].name} (не хватает {m['missing']} {m['ingredient'].unit})" for m in missing])
-                    messages.error(request, f'Не хватает ингредиентов для {dish.name}: {missing_list}')
+                    messages.error(request, f'Ошибка при резервировании ингредиентов')
+                missing_list = ", ".join([f"{m['ingredient'].name} (не хватает {m['missing']} {m['ingredient'].unit})" for m in missing])
+                messages.error(request, f'Не хватает ингредиентов для {dish.name}: {missing_list}')
                     
             except (ValueError, Dish.DoesNotExist):
                 messages.error(request, 'Ошибка в данных')
@@ -996,7 +1220,7 @@ def add_dish(request):
         description = request.POST.get('description')
         price = request.POST.get('price')
         category_id = request.POST.get('category')
-        is_available = bool(request.POST.get('is_available'))
+        
         image = request.FILES.get('image')
 
         try:
@@ -1006,7 +1230,6 @@ def add_dish(request):
                 description=description,
                 price=price,
                 category=category,
-                is_available=is_available,
                 image=image,
                 created_by=request.user
             )
@@ -1040,7 +1263,6 @@ def edit_dish(request, dish_id):
         dish.name = request.POST.get('name')
         dish.description = request.POST.get('description')
         dish.category_id = request.POST.get('category')
-        dish.is_available = bool(request.POST.get('is_available'))
 
         if request.user.is_admin():
             dish.price = request.POST.get('price')
@@ -1522,4 +1744,3 @@ def adjust_stock(request, stock_id):
             messages.error(request, 'Некорректное количество')
     
     return redirect('manage_inventory')
-
