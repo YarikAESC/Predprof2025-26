@@ -115,7 +115,7 @@ class Dish(models.Model):
         verbose_name_plural = 'Блюда'
         ordering = ['category', 'name']
     
-    def __str__(self):
+    def str(self):
         return self.name
 
     # Средняя оценка блюда из отзывов
@@ -586,4 +586,5 @@ class StockHistory(models.Model):
         verbose_name = 'История запасов'
         verbose_name_plural = 'История запасов'
         ordering = ['-created_at']
+
 
