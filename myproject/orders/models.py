@@ -14,7 +14,7 @@ class Category(models.Model):
         verbose_name_plural = 'Категории'
         ordering = ['name']
     
-    def __str__(self):
+    def str(self):
         return self.name
 
 
@@ -28,7 +28,7 @@ class Ingredient(models.Model):
         verbose_name_plural = 'Ингредиенты'
         ordering = ['name']
 
-    def __str__(self):
+    def str(self):
         return self.name
 
 
@@ -48,7 +48,7 @@ class IngredientStock(models.Model):
         verbose_name_plural = 'Запасы ингредиентов'
         ordering = ['ingredient__name']
     
-    def __str__(self):
+    def str(self):
         return f"{self.ingredient.name}: {self.current_quantity} {self.unit}"
     
     @property
@@ -90,7 +90,7 @@ class StockHistory(models.Model):
         verbose_name_plural = 'История запасов'
         ordering = ['-created_at']
     
-    def __str__(self):
+    def str(self):
         return f"{self.get_operation_type_display()}: {self.ingredient.name} ({self.quantity_change})"
 
 
@@ -127,7 +127,6 @@ class Dish(models.Model):
 
     def check_availability(self, quantity=1):
         # Проверяет, можно ли приготовить указанное количество этого блюда
-        # Возвращает (доступно, недостающие_ингредиенты)
         unavailable_ingredients = []
         
         for dish_ingredient in self.ingredients.all():
@@ -152,8 +151,7 @@ class Dish(models.Model):
         return len(unavailable_ingredients) == 0, unavailable_ingredients
     
     def reserve_ingredients(self, quantity=1, user=None):
-        # Резервирует ингредиенты для приготовления блюда
-        # Возвращает True если успешно, False если недостаточно
+        # Резервирует ингредиенты для приготовления блюд
         is_available, missing = self.check_availability(quantity)
         
         if not is_available:
@@ -209,7 +207,7 @@ class DishIngredient(models.Model):
         # Один ингредиент не может повторяться в одном блюде
         unique_together = ('dish', 'ingredient')
 
-    def __str__(self):
+    def str(self):
         return f"{self.ingredient.name} — {self.quantity} {self.ingredient.unit} ({self.dish.name})"
 
 
@@ -228,7 +226,7 @@ class PreparedDish(models.Model):
         verbose_name_plural = 'Готовые блюда'
         ordering = ['dish__name']
     
-    def __str__(self):
+    def str(self):
         return f"{self.dish.name}: {self.quantity} шт."
     
     @property
@@ -269,7 +267,7 @@ class Order(models.Model):
         verbose_name_plural = 'Заказы'
         ordering = ['-created_at']
     
-    def __str__(self):
+    def str(self):
         return f"Заказ #{self.id} от {self.customer.username}"
 
 
@@ -295,7 +293,7 @@ class OrderItem(models.Model):
         verbose_name = 'Элемент заказа'
         verbose_name_plural = 'Элементы заказа'
     
-    def __str__(self):
+    def str(self):
         return f"{self.dish.name} x {self.quantity}"
     
     # Сколько стоит эта позиция
@@ -347,7 +345,7 @@ class Payment(models.Model):
         verbose_name = 'Платеж'
         verbose_name_plural = 'Платежи'
     
-    def __str__(self):
+    def str(self):
         return f"Платеж #{self.id} - {self.amount} руб."
 
 
@@ -440,7 +438,7 @@ class Review(models.Model):
         # Один пользователь не может оставлять несколько отзывов на одно блюдо в одном заказе
         unique_together = ['user', 'dish', 'order']
 
-    def __str__(self):
+    def str(self):
         return f'Отзыв от {self.user.username} на {self.dish.name} ({self.rating}/5)'
 
 
@@ -464,7 +462,7 @@ class ComboSet(models.Model):
         verbose_name_plural = 'Комбо-наборы'
         ordering = ['-created_at']
 
-    def __str__(self):
+    def str(self):
         return f"{self.name} (создал: {self.created_by.username})"
 
     # Сколько раз еще можно заказать этот набор
@@ -501,7 +499,7 @@ class ComboItem(models.Model):
         verbose_name = 'Элемент комбо-набора'
         verbose_name_plural = 'Элементы комбо-наборов'
 
-    def __str__(self):
+    def str(self):
         return f"{self.dish.name} x{self.quantity}"
 
 
@@ -550,8 +548,10 @@ class IngredientCost(models.Model):
         verbose_name = 'Стоимость ингредиента'
         verbose_name_plural = 'Стоимость ингредиентов'
     
-    def __str__(self):
-        return f"{self.ingredient.name}: {self.cost_per_unit} руб/{self.ingredient.unit}"
+    def str(self):
+    # Форматируем с двумя знаками после запятой
+        formatted_cost = f"{self.cost_per_unit:.2f}"
+        return f"{self.ingredient.name}: {formatted_cost} руб/{self.ingredient.unit}"
     
     def calculate_total_cost(self, quantity):
         #Рассчитывает общую стоимость для указанного количества
@@ -586,3 +586,4 @@ class StockHistory(models.Model):
         verbose_name = 'История запасов'
         verbose_name_plural = 'История запасов'
         ordering = ['-created_at']
+
