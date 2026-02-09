@@ -1139,52 +1139,55 @@ def request_restock(request, ingredient_id):
 
 @login_required
 def chef_prepare_dishes(request):
-    # Страница приготовления блюд поваром
     if not request.user.is_chef():
         messages.error(request, 'Доступно только для поваров')
         return redirect('menu')
-    
+
     dishes_to_prepare = Dish.objects.all()
     prepared_dishes = PreparedDish.objects.all().select_related('dish')
-    
+
     low_stock_count = IngredientStock.objects.filter(current_quantity__lte=models.F('min_quantity')).count()
     out_of_stock_count = IngredientStock.objects.filter(current_quantity__lte=0).count()
-    
+
     if request.method == 'POST':
         dish_id = request.POST.get('dish_id')
         quantity = request.POST.get('quantity')
-        
+
         if dish_id and quantity:
             try:
                 dish = Dish.objects.get(id=dish_id)
                 quantity = int(quantity)
-                
+
                 if quantity <= 0:
                     messages.error(request, 'Количество должно быть положительным')
                     return redirect('chef_prepare_dishes')
-                
-                missing = dish.check_availability(quantity)
-                
-                success, _ = dish.reserve_ingredients(quantity, request.user)
-                if success:
-                    prepared_dish, created = PreparedDish.objects.get_or_create(
-                        dish=dish,
-                        defaults={'quantity': quantity, 'prepared_by': request.user}
-                    )
-                    if not created:
-                        prepared_dish.quantity += quantity
-                        prepared_dish.prepared_by = request.user
-                        prepared_dish.save()
-                        
-                    messages.success(request, f'Приготовлено {quantity} порций {dish.name}')
+
+                available, missing = dish.check_availability(
+                    quantity) 
+
+                if available:
+                    success, _ = dish.reserve_ingredients(quantity, request.user)
+                    if success:
+                        prepared_dish, created = PreparedDish.objects.get_or_create(
+                            dish=dish,
+                            defaults={'quantity': quantity, 'prepared_by': request.user}
+                        )
+                        if not created:
+                            prepared_dish.quantity += quantity
+                            prepared_dish.prepared_by = request.user
+                            prepared_dish.save()
+
+                        messages.success(request, f'Приготовлено {quantity} порций {dish.name}')
+                    else:
+                        messages.error(request, f'Ошибка при резервировании ингредиентов')
                 else:
-                    messages.error(request, f'Ошибка при резервировании ингредиентов')
-                missing_list = ", ".join([f"{m['ingredient'].name} (не хватает {m['missing']} {m['ingredient'].unit})" for m in missing])
-                messages.error(request, f'Не хватает ингредиентов для {dish.name}: {missing_list}')
-                    
+                    missing_list = ", ".join(
+                        [f"{m['ingredient'].name} (не хватает {m['missing']} {m['ingredient'].unit})" for m in missing])
+                    messages.error(request, f'Не хватает ингредиентов для {dish.name}: {missing_list}')
+
             except (ValueError, Dish.DoesNotExist):
                 messages.error(request, 'Ошибка в данных')
-    
+
     context = {
         'dishes_to_prepare': dishes_to_prepare,
         'prepared_dishes': prepared_dishes,
@@ -1192,8 +1195,7 @@ def chef_prepare_dishes(request):
         'out_of_stock_count': out_of_stock_count,
     }
     return render(request, 'orders/chef_prepare_dishes.html', context)
-
-
+    
 #  УПРАВЛЕНИЕ БЛЮДАМИ 
 
 @login_required
@@ -1744,3 +1746,4 @@ def adjust_stock(request, stock_id):
             messages.error(request, 'Некорректное количество')
     
     return redirect('manage_inventory')
+
